@@ -8,8 +8,8 @@
         <div>
             <h2 class="page-title">Session breakdown</h2>
             <p class="page-description">
-                {{ $session->user->name }} · {{ \App\Support\Format::dateTime($session->started_at) }}
-                @if($session->ended_at) to {{ \App\Support\Format::time($session->ended_at) }} @endif
+                {{ $session->user->name }} · {{ \App\Support\Format::dateTimeWithSeconds($session->started_at) }}
+                @if($session->ended_at) to {{ \App\Support\Format::timeWithSeconds($session->ended_at) }} @endif
             </p>
         </div>
         <a class="button button-secondary" href="{{ url()->previous() }}">Back</a>
@@ -87,8 +87,11 @@
                 <div class="detail-list">
                     <div class="detail-row"><span class="detail-label">Staff</span><span class="detail-value">{{ $session->user->name }}</span></div>
                     <div class="detail-row"><span class="detail-label">Device</span><span class="detail-value">{{ $session->device_name ?: '—' }}</span></div>
-                    <div class="detail-row"><span class="detail-label">Started</span><span class="detail-value">{{ \App\Support\Format::dateTime($session->started_at) }}</span></div>
-                    <div class="detail-row"><span class="detail-label">Ended</span><span class="detail-value">{{ \App\Support\Format::dateTime($session->ended_at) }}</span></div>
+                    <div class="detail-row"><span class="detail-label">Started</span><span class="detail-value">{{ \App\Support\Format::dateTimeWithSeconds($session->started_at) }}</span></div>
+                    <div class="detail-row"><span class="detail-label">Ended</span><span class="detail-value">{{ \App\Support\Format::dateTimeWithSeconds($session->ended_at) }}</span></div>
+                    <div class="detail-row"><span class="detail-label">Elapsed</span><span class="detail-value">{{ \App\Support\Format::elapsed($session->started_at, $session->ended_at) }}</span></div>
+                    <div class="detail-row"><span class="detail-label">Exact working</span><span class="detail-value tone-green">{{ \App\Support\Format::duration($session->active_seconds) }}</span></div>
+                    <div class="detail-row"><span class="detail-label">Idle</span><span class="detail-value tone-orange">{{ \App\Support\Format::duration($session->idle_seconds) }}</span></div>
                     <div class="detail-row"><span class="detail-label">Tracked</span><span class="detail-value">{{ \App\Support\Format::duration($session->tracked_seconds) }}</span></div>
                     <div class="detail-row"><span class="detail-label">Session UUID</span><span class="detail-value mono tiny">{{ $session->uuid }}</span></div>
                 </div>

@@ -161,6 +161,7 @@
                 <tr>
                     <th>Started</th>
                     <th>Ended</th>
+                    <th>Elapsed</th>
                     <th>Status</th>
                     <th>Active</th>
                     <th>Idle</th>
@@ -172,8 +173,9 @@
                 <tbody>
                 @forelse($summary['sessions'] as $session)
                     <tr>
-                        <td class="num">{{ \App\Support\Format::time($session->started_at) }}</td>
-                        <td class="num">{{ \App\Support\Format::time($session->ended_at) }}</td>
+                        <td class="num">{{ \App\Support\Format::timeWithSeconds($session->started_at) }}</td>
+                        <td class="num">{{ \App\Support\Format::timeWithSeconds($session->ended_at) }}</td>
+                        <td class="num muted">{{ \App\Support\Format::elapsed($session->started_at, $session->ended_at) }}</td>
                         <td><span class="badge {{ \App\Support\Format::statusClass($session->status) }}">{{ \App\Support\Format::statusLabel($session->status) }}</span></td>
                         <td class="num strong">{{ \App\Support\Format::duration($session->active_seconds) }}</td>
                         <td class="num tone-orange">{{ \App\Support\Format::duration($session->idle_seconds) }}</td>
@@ -182,7 +184,8 @@
                         <td class="text-right"><a class="button button-secondary button-sm" href="{{ route('sessions.show', $session) }}">Details</a></td>
                     </tr>
                 @empty
-                    <tr><td colspan="8"><div class="empty"><div class="empty-icon">◷</div>No sessions for this date.</div></td></tr>
+                        <tr><td colspan="9"><div class="empty"><div class="empty-icon">◷</div>No sessions for this date.</div></td></tr>
+
                 @endforelse
                 </tbody>
             </table>

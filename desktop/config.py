@@ -277,17 +277,24 @@ def day_bounds_utc(local_day: date) -> tuple[datetime, datetime]:
 
 
 def format_duration(seconds: float | int, clock: bool = False) -> str:
+    """Human readable duration.
+
+    Seconds are never silently dropped: 258 seconds is shown as "4m 18s" and
+    not as "4m", so the tracker and the web report always agree.
+    """
     total = max(0, int(seconds))
     if clock:
         hours, remainder = divmod(total, 3600)
         minutes, secs = divmod(remainder, 60)
         return f"{hours:02d}:{minutes:02d}:{secs:02d}"
     hours, remainder = divmod(total, 3600)
-    minutes = remainder // 60
+    minutes, secs = divmod(remainder, 60)
     if hours:
-        return f"{hours}h {minutes:02d}m"
+        text = f"{hours}h {minutes:02d}m"
+        return f"{text} {secs:02d}s" if secs else text
     if minutes:
-        return f"{minutes}m"
+        text = f"{minutes}m"
+        return f"{text} {secs:02d}s" if secs else text
     return f"{total}s"
 
 

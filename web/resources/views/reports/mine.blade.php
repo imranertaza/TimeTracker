@@ -71,12 +71,13 @@
         </div>
         <div class="table-wrap">
             <table>
-                <thead><tr><th>Started</th><th>Ended</th><th>Status</th><th>Exact working</th><th>Idle</th><th>Namaz</th><th>Shots</th><th></th></tr></thead>
+                <thead><tr><th>Started</th><th>Ended</th><th>Elapsed</th><th>Status</th><th>Exact working</th><th>Idle</th><th>Namaz</th><th>Shots</th><th></th></tr></thead>
                 <tbody>
                 @forelse($summary['sessions'] as $session)
                     <tr>
-                        <td class="num">{{ \App\Support\Format::time($session->started_at) }}</td>
-                        <td class="num">{{ \App\Support\Format::time($session->ended_at) }}</td>
+                        <td class="num">{{ \App\Support\Format::timeWithSeconds($session->started_at) }}</td>
+                        <td class="num">{{ \App\Support\Format::timeWithSeconds($session->ended_at) }}</td>
+                        <td class="num muted">{{ \App\Support\Format::elapsed($session->started_at, $session->ended_at) }}</td>
                         <td><span class="badge {{ \App\Support\Format::statusClass($session->status) }}">{{ \App\Support\Format::statusLabel($session->status) }}</span></td>
                         <td class="num strong">{{ \App\Support\Format::duration($session->active_seconds) }}</td>
                         <td class="num tone-orange">{{ \App\Support\Format::duration($session->idle_seconds) }}</td>
@@ -85,7 +86,7 @@
                         <td class="text-right"><a class="button button-secondary button-sm" href="{{ route('sessions.show', $session) }}">Details</a></td>
                     </tr>
                 @empty
-                    <tr><td colspan="8"><div class="empty">No sessions recorded on this date.</div></td></tr>
+                    <tr><td colspan="9"><div class="empty">No sessions recorded on this date.</div></td></tr>
                 @endforelse
                 </tbody>
             </table>

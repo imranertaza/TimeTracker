@@ -19,6 +19,7 @@ Built for an office in **Dhaka, Bangladesh (Asia/Dhaka, UTC+6)**.
   - The admin can change the global windows or give any staff member a custom office time from the web panel.
 - Automatically stops the session when the current office window closes.
 - Counts **every keyboard press and mouse click** (counts only — no key content is stored).
+- Tracks the **wall clock exactly**: the seconds are split over the real minute boundaries, so the tracked total always matches the time the session was open.
 - Uses the Windows last-input timer to detect inactivity.
 - After **5 minutes without input**, time is recorded as **idle** and shown separately from active time.
 - Takes a **random screenshot once in every 10-minute block** while tracking.
@@ -37,6 +38,7 @@ Built for an office in **Dhaka, Bangladesh (Asia/Dhaka, UTC+6)**.
 - **Office time settings:** one global office schedule for every staff member, plus an optional custom office schedule for any individual staff member. Desktop apps receive the schedule on login and on every sync.
 - **Live setting updates:** any change made in the admin panel (global office hours, idle threshold, screenshot interval, namaz allowances or a staff member's custom schedule) reaches every running desktop app within about 2 seconds. The app re-renders its office rules, break buttons and window badge and enforces the new hours immediately.
 - **Daily reports:** filter by date and staff member; exact working, idle, Asor and Maghrib namaz; CSV export.
+- **Exact time reporting:** durations never lose their seconds and every session shows its start, end and elapsed wall clock time. A session from 08:20:40 to 08:25:00 therefore reads "Elapsed 4m 20s" and "Exact working 4m 18s" instead of a rounded "4m" that looked like a missing minute.
 - **Monthly reports:** exact working, idle and namaz totals for every staff member, daily breakdown, and CSV export.
 - **Monthly total-time formula:** the admin can generate the monthly total as exact working only, exact + idle, exact + namaz, or exact + idle + namaz. The chosen formula is also used on staff reports.
 - **Staff management:** create, edit, deactivate, reset password; set a custom office time per staff member; deactivation revokes the desktop API token.

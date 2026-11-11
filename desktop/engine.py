@@ -31,6 +31,10 @@ import config
 
 log = logging.getLogger(__name__)
 
+# When the app was frozen (or the PC was asleep) the gap is not billed as
+# working time. Anything up to this many seconds is still counted.
+MAX_CATCH_UP_SECONDS = 60.0
+
 try:  # pynput is an optional runtime dependency; the rest still works without it.
     from pynput import keyboard, mouse
 
@@ -97,6 +101,7 @@ class TrackingEngine:
         self._current_minute: str | None = None
         self._minutes: dict[str, dict[str, int]] = {}
         self._last_tick = time.monotonic()
+        self._last_tick_wall: datetime | None = None
         self._last_persist = 0.0
         self._partial_second = 0.0
 
@@ -203,6 +208,7 @@ class TrackingEngine:
             self._current_minute = minute_iso(now)
             self._minutes[self._current_minute] = self._blank_minute()
             self._last_tick = time.monotonic()
+            self._last_tick_wall = now
             self._last_persist = 0.0
             self._partial_second = 0.0
             self._last_input = now
@@ -223,7 +229,11 @@ class TrackingEngine:
             now = utc_now()
             if self.state == "on_break":
                 self._finish_break_locked(now, auto=True)
+            else:
+                # Count the seconds between the last tick and the stop.
+                self._account_time(now)
 
+            self._flush_finished_minutes()
             self._persist_current_locked(now, force=True)
             self.ended_at = now
             self.state = "idle"
@@ -279,6 +289,7 @@ class TrackingEngine:
             self.screenshot_count = self.db.screenshot_count(row["uuid"])
             self.state = "running"
             self._last_tick = time.monotonic()
+            self._last_tick_wall = utc_now()
             self._last_persist = 0.0
             self._partial_second = 0.0
             self._last_input = utc_now()
@@ -299,6 +310,8 @@ class TrackingEngine:
                 return False
 
             now = utc_now()
+            self._account_time(now)
+            self._flush_finished_minutes()
             self._persist_current_locked(now, force=True)
             self.break_uuid = str(uuid_module.uuid4())
             self.break_type = break_type
@@ -341,6 +354,7 @@ class TrackingEngine:
         self.break_planned_seconds = 0
         self.state = "running"
         self._last_tick = time.monotonic()
+        self._last_tick_wall = now
         self._partial_second = 0.0
         self._last_input = now
         self._schedule_next_screenshot(now, skip_current=True)
@@ -364,28 +378,8 @@ class TrackingEngine:
                 self.stop_session("Office hours ended")
                 return
 
-            elapsed = max(0.0, min(2.0, time.monotonic() - self._last_tick))
-            self._last_tick = time.monotonic()
-
-            key = minute_iso(now)
-            if self._current_minute and key != self._current_minute:
-                self._flush_minute(self._current_minute)
-                self._current_minute = key
-            self._current_minute = key
-            data = self._minutes.setdefault(key, self._blank_minute())
-
-            self._partial_second += elapsed
-            whole_seconds = int(self._partial_second)
-            if whole_seconds:
-                self._partial_second -= whole_seconds
-                idle_age = self._idle_age(now)
-                if idle_age > config.IDLE_THRESHOLD_SECONDS:
-                    data["idle_seconds"] = min(60, data["idle_seconds"] + whole_seconds)
-                    self.idle_seconds += whole_seconds
-                else:
-                    data["active_seconds"] = min(60, data["active_seconds"] + whole_seconds)
-                    self.active_seconds += whole_seconds
-            data["is_idle"] = 1 if data["idle_seconds"] > data["active_seconds"] else 0
+            self._account_time(now)
+            self._flush_finished_minutes()
 
             if time.monotonic() - self._last_persist >= 5:
                 self._persist_current_locked(now, force=False)
@@ -393,6 +387,63 @@ class TrackingEngine:
 
             if self.next_screenshot_at and now >= self.next_screenshot_at:
                 self._capture_screenshot(now)
+
+    def _account_time(self, now: datetime) -> None:
+        """Add the time since the previous tick to the tracked minutes.
+
+        The seconds are split over the minute buckets they really belong to, so
+        a minute boundary that falls between two ticks is neither lost nor
+        counted twice. The tracked total therefore matches the wall clock.
+        """
+        elapsed = time.monotonic() - self._last_tick
+
+        if elapsed <= 0:
+            self._last_tick = time.monotonic()
+            self._last_tick_wall = now
+            return
+
+        if elapsed > MAX_CATCH_UP_SECONDS:
+            # The PC was asleep or the app was frozen: that gap is not billed.
+            elapsed = MAX_CATCH_UP_SECONDS
+
+        wall_start = self._last_tick_wall or now
+        self._last_tick = time.monotonic()
+        self._last_tick_wall = now
+
+        self._partial_second += elapsed
+        whole = int(self._partial_second)
+        if whole <= 0:
+            return
+        self._partial_second -= whole
+
+        idle = self._idle_age(now) > config.IDLE_THRESHOLD_SECONDS
+        cursor = wall_start.replace(microsecond=0)
+        remaining = whole
+
+        while remaining > 0:
+            bucket = minute_iso(cursor)
+            take = min(remaining, 60 - cursor.second)
+            self._add_to_bucket(bucket, take, idle)
+            remaining -= take
+            cursor = cursor + timedelta(seconds=take)
+
+    def _add_to_bucket(self, bucket: str, seconds: int, idle: bool) -> None:
+        data = self._minutes.setdefault(bucket, self._blank_minute())
+
+        if idle:
+            data["idle_seconds"] += seconds
+            self.idle_seconds += seconds
+        else:
+            data["active_seconds"] += seconds
+            self.active_seconds += seconds
+
+        data["is_idle"] = 1 if data["idle_seconds"] > data["active_seconds"] else 0
+        self._current_minute = bucket
+
+    def _flush_finished_minutes(self) -> None:
+        """Write every completed minute to the local database."""
+        for bucket in [key for key in list(self._minutes.keys()) if key != self._current_minute]:
+            self._flush_minute(bucket)
 
     def _blank_minute(self) -> dict[str, int]:
         return {"keystrokes": 0, "clicks": 0, "active_seconds": 0, "idle_seconds": 0, "is_idle": 0}
