@@ -76,6 +76,17 @@ class ApiClient:
     def me(self) -> dict:
         return self._request("GET", "auth/me")
 
+    def settings(self, since: str | None = None) -> dict:
+        """Ask the server whether the office settings changed.
+
+        The server answers with ``{"version": ..., "changed": bool}`` and only
+        sends the full schedule when something actually changed.
+        """
+        path = "settings"
+        if since:
+            path += "?" + urllib.parse.urlencode({"since": since})
+        return self._request("GET", path)
+
     def logout(self) -> dict:
         return self._request("POST", "auth/logout")
 

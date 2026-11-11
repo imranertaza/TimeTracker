@@ -107,7 +107,67 @@ Revokes the current token.
 
 ---
 
-## 4. Start a session
+## 4. Live settings (global + custom staff schedule)
+
+```http
+GET /settings
+GET /settings?since={version}
+```
+
+The desktop app calls this endpoint every couple of seconds with the version it
+already knows. The server answers with a small payload and only sends the full
+schedule when the version changed, so an admin change in the panel reaches
+every running tracker within seconds.
+
+Response when nothing changed:
+
+```json
+{
+  "version": "6f1c0d5a2b9e4c7f8a1d3e5b7c9d0f21",
+  "changed": false,
+  "server_time": "2026-11-09T16:00:00+06:00"
+}
+```
+
+Response when the admin changed the global office settings or this staff
+member's custom office time:
+
+```json
+{
+  "version": "a91f7c2e4b8d6f0a3c5e7b9d1f3a5c7e",
+  "changed": true,
+  "schedule": {
+    "timezone": "Asia/Dhaka",
+    "windows": [
+      {"start": "01:00", "end": "06:58", "start_minutes": 60, "end_minutes": 418},
+      {"start": "14:15", "end": "18:30", "start_minutes": 855, "end_minutes": 1110}
+    ],
+    "idle_threshold_minutes": 5,
+    "screenshot_interval_minutes": 10,
+    "breaks": {
+      "asor": {"label": "Asor Namaz", "minutes": 20},
+      "maghrib": {"label": "Maghrib Namaz", "minutes": 15}
+    },
+    "status": {
+      "is_open": true,
+      "window": {"start": "01:00", "end": "06:58"},
+      "starts_at": "2026-11-09 01:00",
+      "ends_at": "2026-11-09 06:58",
+      "next_start": null
+    }
+  },
+  "server_time": "2026-11-09T16:00:00+06:00"
+}
+```
+
+The `version` is a fingerprint of the global office settings **and** the
+staff member's own custom schedule. A global change produces a new version for
+every user; a custom schedule change only produces a new version for that
+staff member.
+
+---
+
+## 5. Start a session
 
 ```http
 POST /sessions/start
@@ -147,7 +207,7 @@ Response `201`:
 
 ---
 
-## 5. Sync minute activity and breaks
+## 6. Sync minute activity and breaks
 
 ```http
 POST /sessions/{uuid}/sync
@@ -213,7 +273,7 @@ Response:
 
 ---
 
-## 6. Stop a session
+## 7. Stop a session
 
 ```http
 POST /sessions/{uuid}/stop
@@ -230,7 +290,7 @@ Any open break is closed and capped at its allowance.
 
 ---
 
-## 7. Current open session
+## 8. Current open session
 
 ```http
 GET /sessions/current
@@ -240,7 +300,7 @@ Returns the current `running` or `paused` session, or `null`.
 
 ---
 
-## 8. Namaz breaks
+## 9. Namaz breaks
 
 ### Start
 
@@ -277,7 +337,7 @@ The actual duration is capped at the configured allowance.
 
 ---
 
-## 9. Upload a screenshot
+## 10. Upload a screenshot
 
 ```http
 POST /screenshots
@@ -309,7 +369,7 @@ The screenshot URL requires an authenticated web session; staff can only see the
 
 ---
 
-## 10. Error format
+## 11. Error format
 
 Validation errors return `422`:
 

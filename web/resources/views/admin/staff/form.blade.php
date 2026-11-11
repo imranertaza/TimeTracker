@@ -63,7 +63,7 @@
                 <h3 class="card-title mb-2">Office time</h3>
                 <div class="notice mb-2">
                     <span>◉</span>
-                    <span>Global office hours: <strong>{{ \App\Support\WorkSchedule::describeWindows() }}</strong>. Choose a custom schedule to override the global hours for this staff member only.</span>
+                    <span>Global office hours: <strong>{{ \App\Support\WorkSchedule::describeWindows() }}</strong>. Choose a custom schedule to override the global hours for this staff member only. Saved changes reach this staff member's desktop app within about 2 seconds.</span>
                 </div>
 
                 <div class="field">

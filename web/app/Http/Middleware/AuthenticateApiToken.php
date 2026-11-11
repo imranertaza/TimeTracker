@@ -27,7 +27,16 @@ class AuthenticateApiToken
             return response()->json(['message' => 'Invalid or expired authentication token.'], 401);
         }
 
-        $user->forceFill(['last_seen_at' => now()])->save();
+        $now = now();
+
+        // The desktop app polls the live settings endpoint every couple of
+        // seconds, so the heartbeat column is only written when it actually
+        // moved. This keeps the online indicator fresh without a database
+        // write on every single request.
+        if (! $user->last_seen_at || $user->last_seen_at->lt($now->copy()->subSeconds(60))) {
+            $user->forceFill(['last_seen_at' => $now])->save();
+        }
+
         Auth::setUser($user);
         $request->setUserResolver(fn () => $user);
 

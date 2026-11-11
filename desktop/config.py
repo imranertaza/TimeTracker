@@ -55,6 +55,22 @@ SCREENSHOT_MAX_WIDTH = 1920
 SCREENSHOT_JPEG_QUALITY = 72
 
 
+def _poll_seconds(name: str, fallback: float) -> float:
+    raw = os.environ.get(name)
+    if not raw:
+        return fallback
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return fallback
+    return max(1.0, value)
+
+
+# How often the desktop asks the server whether the office settings changed.
+# The admin panel writes are picked up within this many seconds.
+SETTINGS_POLL_SECONDS = _poll_seconds("OTT_SETTINGS_POLL_SECONDS", 2.0)
+
+
 @dataclass(frozen=True)
 class ScheduleStatus:
     is_open: bool
@@ -153,11 +169,18 @@ def _parse_window_time(value: object) -> time | None:
 
 
 def apply_schedule_payload(payload: dict | None, db: object | None = None) -> bool:
-    """Apply the schedule returned by the Laravel API to this process."""
+    """Apply the schedule returned by the Laravel API to this process.
+
+    Returns True when the applied values actually differ from the ones that
+    were active before, so callers can refresh anything that was rendered from
+    the old schedule.
+    """
     global WORK_WINDOWS, BREAK_TYPES, IDLE_THRESHOLD_SECONDS, SCREENSHOT_INTERVAL_SECONDS
 
     if not isinstance(payload, dict):
         return False
+
+    before = (WORK_WINDOWS, BREAK_TYPES, IDLE_THRESHOLD_SECONDS, SCREENSHOT_INTERVAL_SECONDS)
 
     windows: list[tuple[time, time]] = []
     raw_windows = payload.get("windows")
@@ -212,7 +235,9 @@ def apply_schedule_payload(payload: dict | None, db: object | None = None) -> bo
         except Exception:
             pass
 
-    return True
+    after = (WORK_WINDOWS, BREAK_TYPES, IDLE_THRESHOLD_SECONDS, SCREENSHOT_INTERVAL_SECONDS)
+
+    return before != after
 
 
 def load_saved_schedule(db: object) -> bool:

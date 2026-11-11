@@ -27,6 +27,7 @@ Built for an office in **Dhaka, Bangladesh (Asia/Dhaka, UTC+6)**.
 - Break time pauses active/idle tracking and is stored separately.
 - Works offline: activity is queued in local SQLite and retried automatically.
 - Shows live session timer, active time, idle time, namaz time, keystrokes, clicks, screenshots and sync status.
+- **Picks up admin setting changes instantly** (within ~2 seconds): office windows, idle threshold, screenshot interval and namaz allowances are re-read from the server while the app is running, and the screen is refreshed to match.
 - Auto-start can be toggled from the app footer.
 
 ### Laravel web panel (`web/`)
@@ -34,6 +35,7 @@ Built for an office in **Dhaka, Bangladesh (Asia/Dhaka, UTC+6)**.
 - Admin and staff logins.
 - **Admin dashboard:** live online staff, exact working time, idle time, namaz totals, keyboard/mouse counts, screenshots and last heartbeat.
 - **Office time settings:** one global office schedule for every staff member, plus an optional custom office schedule for any individual staff member. Desktop apps receive the schedule on login and on every sync.
+- **Live setting updates:** any change made in the admin panel (global office hours, idle threshold, screenshot interval, namaz allowances or a staff member's custom schedule) reaches every running desktop app within about 2 seconds. The app re-renders its office rules, break buttons and window badge and enforces the new hours immediately.
 - **Daily reports:** filter by date and staff member; exact working, idle, Asor and Maghrib namaz; CSV export.
 - **Monthly reports:** exact working, idle and namaz totals for every staff member, daily breakdown, and CSV export.
 - **Monthly total-time formula:** the admin can generate the monthly total as exact working only, exact + idle, exact + namaz, or exact + idle + namaz. The chosen formula is also used on staff reports.

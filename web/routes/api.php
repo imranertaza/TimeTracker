@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BreakController;
 use App\Http\Controllers\Api\ScreenshotController;
 use App\Http\Controllers\Api\SessionController;
+use App\Http\Controllers\Api\SettingsController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function (): void {
@@ -12,6 +13,8 @@ Route::prefix('v1')->group(function (): void {
     Route::middleware('api.token')->group(function (): void {
         Route::get('/auth/me', [AuthController::class, 'me']);
         Route::post('/auth/logout', [AuthController::class, 'logout']);
+
+        Route::get('/settings', [SettingsController::class, 'show']);
 
         Route::get('/sessions/current', [SessionController::class, 'current']);
         Route::post('/sessions/start', [SessionController::class, 'start']);

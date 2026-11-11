@@ -129,6 +129,98 @@ class OfficeSettingsAndReportsTest extends TestCase
         $this->assertNull($staffOne->fresh()->office_windows);
     }
 
+    public function test_desktop_app_receives_setting_changes_instantly(): void
+    {
+        $this->seed();
+        $admin = User::query()->where('email', 'admin@officetracker.test')->firstOrFail();
+        $staffOne = User::query()->where('email', 'staff@officetracker.test')->firstOrFail();
+        $staffTwo = User::query()->where('email', 'staff2@officetracker.test')->firstOrFail();
+
+        $staffOneToken = $this->postJson('/api/v1/auth/login', [
+            'email' => 'staff@officetracker.test',
+            'password' => 'Staff@12345',
+        ])->assertOk()->json('token');
+
+        $staffTwoToken = $this->postJson('/api/v1/auth/login', [
+            'email' => 'staff2@officetracker.test',
+            'password' => 'Staff@12345',
+        ])->assertOk()->json('token');
+
+        // First call hands over the full schedule.
+        $first = $this->withToken($staffOneToken)->getJson('/api/v1/settings')->assertOk()->json();
+        $this->assertTrue($first['changed']);
+        $this->assertNotEmpty($first['version']);
+        $this->assertArrayHasKey('windows', $first['schedule']);
+
+        // Nothing changed, so the server only confirms the version.
+        $this->withToken($staffOneToken)
+            ->getJson('/api/v1/settings?since='.$first['version'])
+            ->assertOk()
+            ->assertJson(['changed' => false])
+            ->assertJsonMissingPath('schedule');
+
+        // The admin changes the global office hours.
+        $this->actingAs($admin)->put('/admin/settings', [
+            'windows' => [
+                ['start' => '11:00', 'end' => '15:00'],
+                ['start' => '', 'end' => ''],
+                ['start' => '', 'end' => ''],
+            ],
+            'idle_threshold_minutes' => 9,
+            'screenshot_interval_minutes' => 14,
+            'asor_namaz_minutes' => 22,
+            'maghrib_namaz_minutes' => 17,
+            'total_time_mode' => 'active',
+        ])->assertRedirect('/admin/settings');
+
+        $afterGlobal = $this->withToken($staffOneToken)
+            ->getJson('/api/v1/settings?since='.$first['version'])
+            ->assertOk()
+            ->json();
+
+        $this->assertTrue($afterGlobal['changed']);
+        $this->assertNotSame($first['version'], $afterGlobal['version']);
+        $this->assertSame('11:00', $afterGlobal['schedule']['windows'][0]['start']);
+        $this->assertSame('15:00', $afterGlobal['schedule']['windows'][0]['end']);
+        $this->assertSame(9, $afterGlobal['schedule']['idle_threshold_minutes']);
+        $this->assertSame(14, $afterGlobal['schedule']['screenshot_interval_minutes']);
+        $this->assertSame(22, $afterGlobal['schedule']['breaks']['asor']['minutes']);
+
+        // A custom schedule for one staff member only changes that person's version.
+        $this->actingAs($admin)->put('/admin/staff/'.$staffOne->id, [
+            'name' => $staffOne->name,
+            'email' => $staffOne->email,
+            'is_active' => 1,
+            'schedule_mode' => 'custom',
+            'windows' => [
+                ['start' => '12:00', 'end' => '16:00'],
+                ['start' => '', 'end' => ''],
+                ['start' => '', 'end' => ''],
+            ],
+        ])->assertRedirect('/admin/staff');
+
+        $afterCustom = $this->withToken($staffOneToken)
+            ->getJson('/api/v1/settings?since='.$afterGlobal['version'])
+            ->assertOk()
+            ->json();
+
+        $this->assertTrue($afterCustom['changed']);
+        $this->assertNotSame($afterGlobal['version'], $afterCustom['version']);
+        $this->assertSame('12:00', $afterCustom['schedule']['windows'][0]['start']);
+
+        $otherStaff = $this->withToken($staffTwoToken)
+            ->getJson('/api/v1/settings?since='.$afterGlobal['version'])
+            ->assertOk()
+            ->json();
+
+        $this->assertFalse($otherStaff['changed']);
+        $this->assertSame($afterGlobal['version'], $otherStaff['version']);
+
+        // Unauthenticated calls are rejected.
+        $this->flushHeaders();
+        $this->getJson('/api/v1/settings')->assertUnauthorized();
+    }
+
     public function test_admin_settings_and_staff_schedule_forms_render(): void
     {
         $this->seed();

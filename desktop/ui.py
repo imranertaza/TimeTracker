@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import queue
 import socket
 import threading
 import tkinter as tk
@@ -31,6 +32,7 @@ from config import (
 )
 from database import Database
 from engine import TrackingEngine
+from settings_watcher import SettingsWatcher
 from sync_service import SyncService
 
 import config
@@ -74,8 +76,9 @@ class TrackerApp:
         load_saved_schedule(self.db)
         self.engine = TrackingEngine(self.db)
         self.engine.start_listeners()
-        self.sync = SyncService(self.db)
+        self.sync = SyncService(self.db, on_schedule_change=self._on_settings_changed)
         self.sync.start()
+        self.settings = SettingsWatcher(self.db, on_change=self._on_settings_changed)
 
         self.api_url = self.db.get_setting("api_url", DEFAULT_API_URL) or DEFAULT_API_URL
         self.token = self.db.get_setting("api_token")
@@ -91,6 +94,8 @@ class TrackerApp:
         self._last_log_text = ""
         self._login_busy = False
         self._session_display_uuid: str | None = None
+        self._pending_settings: queue.Queue = queue.Queue()
+        self.settings_applied_at: datetime | None = None
 
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
         self._build_login()
@@ -248,7 +253,13 @@ class TrackerApp:
 
         self.login_password.bind("<Return>", lambda _e: self._do_login())
         self.login_email.focus_set()
-        self.root.after(50, lambda: self.login_password.focus_set())
+        self.root.after(50, self._focus_login_password)
+
+    def _focus_login_password(self) -> None:
+        try:
+            self.login_password.focus_set()
+        except tk.TclError:
+            pass
 
     def _set_login_busy(self, busy: bool, text: str = "Signing in…") -> None:
         self._login_busy = busy
@@ -310,7 +321,10 @@ class TrackerApp:
         self.token = token
         self.user = user
         self.sync.trigger()
+        self.settings.reset()
         self._build_main()
+        self.settings.start()
+        self.settings.trigger()
 
     def _try_auto_login(self) -> None:
         if not self.token or not self.user:
@@ -342,6 +356,8 @@ class TrackerApp:
             self.api_url = api_url
             self.user = user
             self._build_main()
+            self.settings.start()
+            self.settings.trigger()
             if offline:
                 self._append_log("Starting offline. Data will sync when the office server is reachable.")
         else:
@@ -446,6 +462,7 @@ class TrackerApp:
             metrics.grid_columnconfigure(col, weight=1, uniform="metrics")
 
         self.metric_vars: dict[str, tk.StringVar] = {}
+        self.metric_notes: dict[str, tk.Label] = {}
         metric_specs = [
             ("active", "ACTIVE TIME", GREEN, GREEN_SOFT),
             ("idle", "IDLE TIME", ORANGE, ORANGE_SOFT),
@@ -460,9 +477,10 @@ class TrackerApp:
             tk.Label(card, text=title, bg=SURFACE, fg=MUTED, font=(FONT, 7, "bold")).pack(anchor="w", padx=14, pady=(11, 0))
             var = tk.StringVar(value="0")
             tk.Label(card, textvariable=var, bg=SURFACE, fg=color, font=(MONO, 18, "bold")).pack(anchor="w", padx=14, pady=(0, 1))
-            note = {"active": "Productive time", "idle": f"After {config.IDLE_THRESHOLD_SECONDS // 60} min no input", "namaz": "Today total", "screens": f"Every {config.SCREENSHOT_INTERVAL_SECONDS // 60} minutes", "keys": "This session", "clicks": "This session"}[key]
-            tk.Label(card, text=note, bg=SURFACE, fg=MUTED, font=(FONT, 7)).pack(anchor="w", padx=14, pady=(0, 10))
+            note = tk.Label(card, text=self._metric_note_text(key), bg=SURFACE, fg=MUTED, font=(FONT, 7))
+            note.pack(anchor="w", padx=14, pady=(0, 10))
             self.metric_vars[key] = var
+            self.metric_notes[key] = note
 
         # Sync card
         sync_card = self._card(right_col)
@@ -475,7 +493,9 @@ class TrackerApp:
         self.sync_label.pack(side="left", padx=(6, 0))
         self._button(sync_top, "Sync now", self._sync_now, bg=SOFT, fg=TEXT, font=(FONT, 8, "bold"), padx=9, pady=4).pack(side="right")
         self.sync_meta = tk.Label(sync_card, text="", bg=SURFACE, fg=MUTED, font=(FONT, 7), anchor="w")
-        self.sync_meta.pack(fill="x", padx=16, pady=(2, 11))
+        self.sync_meta.pack(fill="x", padx=16, pady=(2, 2))
+        self.settings_meta = tk.Label(sync_card, text="", bg=SURFACE, fg=MUTED, font=(FONT, 7), anchor="w")
+        self.settings_meta.pack(fill="x", padx=16, pady=(0, 11))
 
         # Bottom area
         bottom = tk.Frame(content, bg=BG)
@@ -526,17 +546,9 @@ class TrackerApp:
         info_card = self._card(side)
         info_card.pack(fill="x")
         tk.Label(info_card, text="OFFICE RULES", bg=SURFACE, fg=MUTED, font=(FONT, 8, "bold"), anchor="w").pack(fill="x", padx=16, pady=(11, 5))
-        rules = [
-            f"Window {index + 1} · {start.strftime('%H:%M')} – {end.strftime('%H:%M')}"
-            for index, (start, end) in enumerate(config.WORK_WINDOWS)
-        ]
-        rules.extend([
-            f"Idle threshold · {config.IDLE_THRESHOLD_SECONDS // 60} minutes without input",
-            f"Screenshots · random once per {config.SCREENSHOT_INTERVAL_SECONDS // 60} minutes",
-            " · ".join(f"{rule['label']} · {rule['minutes']} minutes" for rule in config.BREAK_TYPES.values()),
-        ])
-        for text in rules:
-            tk.Label(info_card, text="•  " + text, bg=SURFACE, fg=MUTED, font=(FONT, 8), anchor="w").pack(fill="x", padx=16, pady=1)
+        self.rules_box = tk.Frame(info_card, bg=SURFACE)
+        self.rules_box.pack(fill="x", padx=16, pady=1)
+        self._render_rules()
 
         self.today_label = tk.Label(info_card, text="Today: 0m active · 0m idle · 0m namaz", bg=SURFACE, fg=TEXT, font=(FONT, 8, "bold"), anchor="w")
         self.today_label.pack(fill="x", padx=16, pady=(8, 4))
@@ -555,6 +567,113 @@ class TrackerApp:
         if self.engine.resume_if_possible():
             self.sync.trigger()
         self._tick_loop()
+
+    # ------------------------------------------------------------------ schedule
+    def _rule_texts(self) -> list[str]:
+        texts = [
+            f"Window {index + 1} · {start.strftime('%H:%M')} – {end.strftime('%H:%M')}"
+            for index, (start, end) in enumerate(config.WORK_WINDOWS)
+        ]
+        texts.append(f"Idle threshold · {config.IDLE_THRESHOLD_SECONDS // 60} minutes without input")
+        texts.append(f"Screenshots · random once per {config.SCREENSHOT_INTERVAL_SECONDS // 60} minutes")
+        texts.append(" · ".join(f"{rule['label']} · {rule['minutes']} minutes" for rule in config.BREAK_TYPES.values()))
+        return texts
+
+    def _render_rules(self) -> None:
+        box = getattr(self, "rules_box", None)
+        if box is None:
+            return
+        for child in box.winfo_children():
+            child.destroy()
+        for text in self._rule_texts():
+            tk.Label(box, text="•  " + text, bg=SURFACE, fg=MUTED, font=(FONT, 8), anchor="w").pack(fill="x", pady=1)
+
+    def _metric_note_text(self, key: str) -> str:
+        return {
+            "active": "Productive time",
+            "idle": f"After {config.IDLE_THRESHOLD_SECONDS // 60} min no input",
+            "namaz": "Today total",
+            "screens": f"Every {config.SCREENSHOT_INTERVAL_SECONDS // 60} minutes",
+            "keys": "This session",
+            "clicks": "This session",
+        }.get(key, "")
+
+    def _refresh_metric_notes(self) -> None:
+        for key, label in getattr(self, "metric_notes", {}).items():
+            try:
+                label.configure(text=self._metric_note_text(key))
+            except tk.TclError:
+                pass
+
+    def _refresh_break_buttons(self) -> None:
+        asor = config.BREAK_TYPES.get("asor", {"label": "Asor", "minutes": 20})
+        maghrib = config.BREAK_TYPES.get("maghrib", {"label": "Maghrib", "minutes": 15})
+        try:
+            self.asor_button.configure(text=f"{asor['label']} · {asor['minutes']}m")
+            self.maghrib_button.configure(text=f"{maghrib['label']} · {maghrib['minutes']}m")
+        except tk.TclError:
+            pass
+
+    def _on_settings_changed(self, schedule: dict | None = None) -> None:
+        """Called from the settings watcher thread when the admin changed something.
+
+        Tkinter may only be touched from the main thread, so the change is
+        queued here and picked up by the UI tick loop.
+        """
+        self._pending_settings.put(schedule or {})
+
+    def _drain_settings(self) -> None:
+        """Apply queued setting changes. Runs on the Tk main thread."""
+        latest = None
+        while True:
+            try:
+                latest = self._pending_settings.get_nowait()
+            except queue.Empty:
+                break
+
+        if latest is None:
+            return
+
+        self.settings_applied_at = dhaka_now()
+        before = self._schedule_display_snapshot()
+        try:
+            self.engine.refresh_schedule()
+            self._render_rules()
+            self._refresh_metric_notes()
+            self._refresh_break_buttons()
+        except Exception as exc:  # pragma: no cover - defensive
+            log.exception("Could not refresh the schedule labels")
+            self._append_log(f"Settings warning: {exc}")
+            return
+
+        if self.view == "main" and before != self._schedule_display_snapshot():
+            self._append_log("Office settings were updated by the admin and applied instantly.")
+
+    def _schedule_display_snapshot(self) -> tuple:
+        """What the screen currently shows about the office rules."""
+        parts: list = []
+
+        box = getattr(self, "rules_box", None)
+        if box is not None:
+            try:
+                parts.append(tuple(label.cget("text") for label in box.winfo_children()))
+            except tk.TclError:
+                parts.append(())
+
+        for name in ("asor_button", "maghrib_button"):
+            widget = getattr(self, name, None)
+            try:
+                parts.append(widget.cget("text") if widget is not None else "")
+            except tk.TclError:
+                parts.append("")
+
+        for label in getattr(self, "metric_notes", {}).values():
+            try:
+                parts.append(label.cget("text"))
+            except tk.TclError:
+                parts.append("")
+
+        return tuple(parts)
 
     # ------------------------------------------------------------------ actions
     def _start(self) -> None:
@@ -636,6 +755,7 @@ class TrackerApp:
         api_url = self.api_url
         self.token = None
         self.user = None
+        self.settings.stop()
         self.db.set_setting("api_token", None)
         self.db.set_setting("user_json", None)
         if token:
@@ -659,6 +779,7 @@ class TrackerApp:
             return
         try:
             self.engine.tick()
+            self._drain_settings()
             self._refresh_ui()
             self._drain_messages()
             now = datetime.now().timestamp()
@@ -776,6 +897,35 @@ class TrackerApp:
             self.sync_label.configure(text="Waiting for office server", fg=ORANGE)
             self.sync_meta.configure(text="Data is stored locally and will retry automatically.")
 
+        self._refresh_settings_status()
+
+    def _refresh_settings_status(self) -> None:
+        """Show whether admin setting changes are arriving live."""
+        watcher = getattr(self, "settings", None)
+        if watcher is None or not watcher.is_running:
+            self.settings_meta.configure(text="Live settings: off", fg=ORANGE)
+            return
+
+        if watcher.last_error:
+            self.settings_meta.configure(
+                text=f"Live settings: retrying · {watcher.last_error[:70]}",
+                fg=ORANGE,
+            )
+            return
+
+        if watcher.last_applied_at:
+            self.settings_meta.configure(
+                text=f"Live settings: on · last update {format_local(watcher.last_applied_at, '%I:%M:%S %p')}",
+                fg=GREEN_DARK,
+            )
+        elif watcher.last_check_at:
+            self.settings_meta.configure(
+                text=f"Live settings: on · checked {format_local(watcher.last_check_at, '%I:%M:%S %p')}",
+                fg=MUTED,
+            )
+        else:
+            self.settings_meta.configure(text="Live settings: on · waiting for the first check", fg=MUTED)
+
     def _refresh_activity_table(self) -> None:
         for item in self.activity_tree.get_children():
             self.activity_tree.delete(item)
@@ -838,6 +988,7 @@ class TrackerApp:
             self.sync.trigger()
         self.engine.stop_listeners()
         self.sync.stop()
+        self.settings.stop()
         try:
             self.db.close()
         except Exception:

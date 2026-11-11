@@ -14,8 +14,9 @@ log = logging.getLogger(__name__)
 
 
 class SyncService:
-    def __init__(self, db: Database):
+    def __init__(self, db: Database, on_schedule_change=None):
         self.db = db
+        self.on_schedule_change = on_schedule_change
         self._stop = threading.Event()
         self._wake = threading.Event()
         self._lock = threading.Lock()
@@ -74,7 +75,8 @@ class SyncService:
                 # Heartbeat: keeps the admin dashboard's online indicator fresh
                 # during idle time and namaz breaks when there is nothing to upload.
                 heartbeat = api.me()
-                apply_schedule_payload(heartbeat.get("schedule"), self.db)
+                if apply_schedule_payload(heartbeat.get("schedule"), self.db):
+                    self._notify_schedule_change(heartbeat.get("schedule"))
                 self._set_status(True, "Connected · everything is synced.")
                 return
 
@@ -100,7 +102,8 @@ class SyncService:
 
         if not remote_created:
             start_response = api.start_session(session_uuid, row["started_at"], row["device_name"] or "Windows PC")
-            apply_schedule_payload(start_response.get("schedule"), self.db)
+            if apply_schedule_payload(start_response.get("schedule"), self.db):
+                self._notify_schedule_change(start_response.get("schedule"))
             self.db.update_session(session_uuid, remote_created=1)
             row = self.db.get_session(session_uuid)
             if not row:
@@ -152,6 +155,15 @@ class SyncService:
             self.db.update_session(session_uuid, stop_synced=1)
 
         return True
+
+    def _notify_schedule_change(self, schedule: dict | None) -> None:
+        """Tell the interface that the office settings changed."""
+        if not self.on_schedule_change:
+            return
+        try:
+            self.on_schedule_change(schedule)
+        except Exception:  # pragma: no cover - defensive
+            log.exception("Schedule change notification failed")
 
     def _set_status(self, online: bool, message: str, error: bool = False) -> None:
         with self._status_lock:

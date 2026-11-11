@@ -445,6 +445,16 @@ class TrackingEngine:
         )
 
     # ------------------------------------------------------------------ screenshots
+    def refresh_schedule(self) -> None:
+        """Re-arm schedule driven timers after the admin changed a setting.
+
+        The screenshot interval is baked into the next scheduled capture, so a
+        new interval only takes effect once the timer is re-armed.
+        """
+        with self._lock:
+            if self.state == "running":
+                self._schedule_next_screenshot(utc_now(), skip_current=True)
+
     def _schedule_next_screenshot(self, now: datetime, skip_current: bool) -> None:
         interval = max(60, int(config.SCREENSHOT_INTERVAL_SECONDS))
         timestamp = now.timestamp()

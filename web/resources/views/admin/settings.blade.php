@@ -86,7 +86,7 @@
 
                 <div class="notice mb-2">
                     <span>◉</span>
-                    <span>Desktop apps receive the updated schedule on their next sync. Staff with a custom office time keep their own windows.</span>
+                    <span>Desktop apps pick up this change within about 2 seconds and apply it straight away. Staff with a custom office time keep their own windows.</span>
                 </div>
 
                 <div class="toolbar">

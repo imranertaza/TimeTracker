@@ -284,6 +284,44 @@ class WorkSchedule
         ];
     }
 
+    /**
+     * Fingerprint of every setting the desktop app has to know about.
+     *
+     * The value only changes when the global office settings or this user's own
+     * custom schedule change, which lets the desktop app ask the server "did
+     * anything change?" and get an instant answer.
+     */
+    public static function settingsVersion(?User $user = null): string
+    {
+        $setting = OfficeSetting::current();
+
+        $fingerprint = [
+            'timezone' => self::timezone(),
+            'windows' => self::normaliseWindows($setting->windows),
+            'idle_threshold_minutes' => (int) $setting->idle_threshold_minutes,
+            'screenshot_interval_minutes' => (int) $setting->screenshot_interval_minutes,
+            'asor_namaz_minutes' => (int) $setting->asor_namaz_minutes,
+            'maghrib_namaz_minutes' => (int) $setting->maghrib_namaz_minutes,
+            'total_time_mode' => (string) $setting->total_time_mode,
+            'office_windows' => $user?->office_windows,
+        ];
+
+        return substr(hash('sha256', (string) json_encode($fingerprint)), 0, 32);
+    }
+
+    /**
+     * Version + schedule payload used by the live settings endpoint.
+     *
+     * @return array{version: string, schedule: array<string, mixed>}
+     */
+    public static function settingsPayload(?User $user = null): array
+    {
+        return [
+            'version' => self::settingsVersion($user),
+            'schedule' => self::apiPayload($user),
+        ];
+    }
+
     public static function describeWindows(?User $user = null): string
     {
         return collect(self::windows($user))
