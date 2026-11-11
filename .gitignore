@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+desktop/data/
+desktop/*.log
+desktop/*.jpg
+desktop/*.png
+
+# Laravel
+web/vendor/
+web/node_modules/
+web/.env
+web/.env.backup
+web/.phpunit.result.cache
+web/database/*.sqlite
+web/database/*.sqlite-journal
+web/storage/app/screenshots/
+web/storage/logs/*.log
+web/public/storage
+web/public/hot
+web/public/build/
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Test output
+test_screenshot.png
