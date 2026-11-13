@@ -56,7 +56,8 @@ Response `200`:
     "screenshot_interval_minutes": 10,
     "breaks": {
       "asor": {"label": "Asor Namaz", "minutes": 20},
-      "maghrib": {"label": "Maghrib Namaz", "minutes": 15}
+      "maghrib": {"label": "Maghrib Namaz", "minutes": 15},
+      "toilet": {"label": "Toilet Break", "minutes": 15}
     },
     "status": {
       "is_open": true,
@@ -74,7 +75,9 @@ Logging in invalidates the previous desktop token for that user.
 The `schedule` object is per user. If an admin has set a custom office time for
 this staff member, `schedule.windows` contains those custom windows. Otherwise
 it contains the global office windows. Break allowances, idle threshold and
-screenshot interval come from the global office settings.
+screenshot interval come from the global office settings. The toilet allowance
+is the global value unless that staff member has a custom toilet allowance, in
+which case it appears in `schedule.breaks.toilet.minutes`.
 
 ---
 
@@ -146,7 +149,8 @@ member's custom office time:
     "screenshot_interval_minutes": 10,
     "breaks": {
       "asor": {"label": "Asor Namaz", "minutes": 20},
-      "maghrib": {"label": "Maghrib Namaz", "minutes": 15}
+      "maghrib": {"label": "Maghrib Namaz", "minutes": 15},
+      "toilet": {"label": "Toilet Break", "minutes": 15}
     },
     "status": {
       "is_open": true,
@@ -252,7 +256,8 @@ Notes:
 
 - Activity rows are idempotent per `(session, minute_start)`.
 - `active_seconds` and `idle_seconds` are capped at 60.
-- Break duration is capped at the configured allowance (Asor 1200 seconds, Maghrib 900 seconds).
+- Break `type` is `asor`, `maghrib` or `toilet`.
+- Break duration is capped at the configured allowance (Asor 1200 seconds, Maghrib 900 seconds, toilet 900 seconds by default or the staff member's override).
 - The server recalculates session totals from all activity and break rows.
 
 Response:
@@ -318,7 +323,7 @@ Content-Type: application/json
 }
 ```
 
-`type` is `asor` or `maghrib`. The session status becomes `paused`.
+`type` is `asor`, `maghrib` or `toilet`. The session status becomes `paused`.
 
 ### End
 
@@ -333,7 +338,9 @@ Content-Type: application/json
 }
 ```
 
-The actual duration is capped at the configured allowance.
+The actual duration is capped at the configured allowance. If the break is ended
+after its allowance has already run out, the work session is stopped instead of
+resuming tracking.
 
 ---
 

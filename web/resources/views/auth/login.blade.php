@@ -24,7 +24,7 @@
                 <div class="feature"><span class="feature-dot"></span> Office-hour enforcement (9:00 AM – 6:30 PM)</div>
                 <div class="feature"><span class="feature-dot"></span> Keyboard, mouse and idle-time monitoring</div>
                 <div class="feature"><span class="feature-dot"></span> Random screenshots every 10 minutes</div>
-                <div class="feature"><span class="feature-dot"></span> Asor and Maghrib namaz break reporting</div>
+                <div class="feature"><span class="feature-dot"></span> Namaz and toilet break reporting</div>
                 <div class="feature"><span class="feature-dot"></span> Admin and staff views with API sync</div>
             </div>
         </div>

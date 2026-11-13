@@ -228,7 +228,7 @@ class TrackingEngine:
                 return
             now = utc_now()
             if self.state == "on_break":
-                self._finish_break_locked(now, auto=True)
+                self._finish_break_locked(now, auto=True, resume=False)
             else:
                 # Count the seconds between the last tick and the stop.
                 self._account_time(now)
@@ -246,7 +246,10 @@ class TrackingEngine:
                 break_seconds=self.break_seconds,
                 stop_synced=0,
             )
-            self.emit(f"Tracking stopped. Active {format_duration(self.active_seconds)}, idle {format_duration(self.idle_seconds)}.")
+            self.emit(
+                f"Tracking stopped ({reason}). Active {format_duration(self.active_seconds)}, "
+                f"idle {format_duration(self.idle_seconds)}."
+            )
             self.session_uuid = None
             self.started_at = None
             self.next_screenshot_at = None
@@ -280,6 +283,50 @@ class TrackingEngine:
             self.emit("A previous day's open session was closed.")
             return False
 
+        # A break may have been left open if the app crashed or was restarted
+        # while the staff member was away. Rebuild that state instead of
+        # silently resuming the session and counting break time as active.
+        now = utc_now()
+        active_break: tuple | None = None
+        saw_open_break = False
+        for open_break in self.db.open_breaks(row["uuid"]):
+            saw_open_break = True
+            break_started = parse_iso(open_break["started_at"])
+            if not break_started:
+                continue
+            planned = int(config.BREAK_TYPES.get(open_break["type"], {}).get("minutes", 15)) * 60
+            ends_at = break_started.replace(microsecond=0) + timedelta(seconds=planned)
+            actual = max(0, int((now - break_started).total_seconds()))
+
+            if now >= ends_at:
+                # The allowance ran out while the app was closed.
+                self.db.finish_break(
+                    open_break["uuid"],
+                    iso_utc(now) or "",
+                    min(planned, actual),
+                    completed=True,
+                )
+            else:
+                active_break = (open_break, break_started, ends_at, planned)
+
+        if saw_open_break and active_break is None:
+            total_break = sum(
+                int(item["duration_seconds"] or 0)
+                for item in self.db.breaks_for_session(row["uuid"])
+            )
+            self.db.update_session(
+                row["uuid"],
+                status="stopped",
+                ended_at=iso_utc(now),
+                break_seconds=total_break,
+                stop_synced=0,
+            )
+            self.emit(
+                "A break ran past its allowance while the tracker was closed. "
+                "Tracking stays stopped."
+            )
+            return False
+
         with self._lock:
             self.session_uuid = row["uuid"]
             self.started_at = started
@@ -287,23 +334,39 @@ class TrackingEngine:
             self.idle_seconds = int(row["idle_seconds"] or 0)
             self.break_seconds = int(row["break_seconds"] or 0)
             self.screenshot_count = self.db.screenshot_count(row["uuid"])
-            self.state = "running"
             self._last_tick = time.monotonic()
-            self._last_tick_wall = utc_now()
+            self._last_tick_wall = now
             self._last_persist = 0.0
             self._partial_second = 0.0
-            self._last_input = utc_now()
-            self._current_minute = minute_iso()
+            self._last_input = now
+            self._current_minute = minute_iso(now)
             self._minutes[self._current_minute] = self._blank_minute()
-            self._schedule_next_screenshot(utc_now(), skip_current=False)
-            self.emit("Recovered and resumed today's open tracking session.")
+
+            if active_break is not None:
+                break_row, break_started, break_ends_at, planned = active_break
+                self.break_uuid = break_row["uuid"]
+                self.break_type = break_row["type"]
+                self.break_started_at = break_started
+                self.break_ends_at = break_ends_at
+                self.break_planned_seconds = planned
+                self.state = "on_break"
+                self.db.update_session(row["uuid"], status="paused")
+                self.emit(
+                    "Recovered an open break. Tracking is still paused; it stops "
+                    "automatically when the allowance ends."
+                )
+            else:
+                self.state = "running"
+                self._schedule_next_screenshot(now, skip_current=False)
+                self.emit("Recovered and resumed today's open tracking session.")
+
             return True
 
     # ------------------------------------------------------------------ breaks
     def start_break(self, break_type: str) -> bool:
         with self._lock:
             if self.state != "running" or not self.session_uuid:
-                self.emit("Start a work session before taking a namaz break.")
+                self.emit("Start a work session before taking a break.")
                 return False
             break_config = config.BREAK_TYPES.get(break_type)
             if not break_config:
@@ -328,9 +391,20 @@ class TrackingEngine:
         with self._lock:
             if self.state != "on_break":
                 return
-            self._finish_break_locked(utc_now(), auto=False)
 
-    def _finish_break_locked(self, now: datetime, auto: bool) -> None:
+            now = utc_now()
+            if self._break_is_overdue(now):
+                # The staff member came back after the allowance: stop tracking
+                # instead of resuming the session.
+                self._finish_break_locked(now, auto=True, resume=False)
+                self.stop_session("Break allowance ended")
+            else:
+                self._finish_break_locked(now, auto=False)
+
+    def _break_is_overdue(self, now: datetime) -> bool:
+        return bool(self.break_ends_at and now >= self.break_ends_at)
+
+    def _finish_break_locked(self, now: datetime, auto: bool, resume: bool = True) -> None:
         if not self.break_uuid or not self.break_started_at or not self.session_uuid:
             self.state = "running" if self.session_uuid else "idle"
             return
@@ -340,13 +414,17 @@ class TrackingEngine:
         )
         self.db.finish_break(self.break_uuid, iso_utc(now) or "", duration, completed=True)
         self.break_seconds += duration
-        self.db.update_session(
-            self.session_uuid,
-            status="running",
-            break_seconds=self.break_seconds,
-        )
-        label = config.BREAK_TYPES.get(self.break_type or "", {}).get("label", "Namaz")
-        self.emit(f"{label} break ended ({format_duration(duration)}). Tracking resumed.")
+        if resume:
+            self.db.update_session(
+                self.session_uuid,
+                status="running",
+                break_seconds=self.break_seconds,
+            )
+        label = config.BREAK_TYPES.get(self.break_type or "", {}).get("label", "Break")
+        if resume:
+            self.emit(f"{label} ended ({format_duration(duration)}). Tracking resumed.")
+        else:
+            self.emit(f"{label} ended ({format_duration(duration)}). Break allowance is over.")
         self.break_uuid = None
         self.break_type = None
         self.break_started_at = None
@@ -357,17 +435,19 @@ class TrackingEngine:
         self._last_tick_wall = now
         self._partial_second = 0.0
         self._last_input = now
-        self._schedule_next_screenshot(now, skip_current=True)
+        if resume:
+            self._schedule_next_screenshot(now, skip_current=True)
 
     # ------------------------------------------------------------------ ticking
     def tick(self) -> None:
         now = utc_now()
         with self._lock:
             if self.state == "on_break":
-                if self.break_ends_at and now >= self.break_ends_at:
-                    self._finish_break_locked(now, auto=True)
-                if self.state == "on_break" and not is_within_work_window(now):
-                    self._finish_break_locked(now, auto=True)
+                if self._break_is_overdue(now):
+                    self._finish_break_locked(now, auto=True, resume=False)
+                    self.stop_session("Break allowance ended")
+                    return
+                if not is_within_work_window(now):
                     self.stop_session("Office hours ended")
                 return
 

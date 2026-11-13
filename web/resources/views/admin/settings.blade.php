@@ -73,6 +73,20 @@
                     </div>
                 </div>
 
+                <div class="form-row">
+                    <div class="field">
+                        <label for="toilet_minutes">Toilet break (minutes)</label>
+                        <input class="input" id="toilet_minutes" name="toilet_minutes" type="number" min="1" max="180" value="{{ old('toilet_minutes', $setting->toilet_minutes) }}" required>
+                        <p class="page-description" style="margin-top:6px">Global toilet allowance. You can override it for an individual staff member from Staff accounts.</p>
+                        @error('toilet_minutes')<div class="errors">{{ $message }}</div>@enderror
+                    </div>
+                </div>
+
+                <div class="notice mb-2">
+                    <span>◉</span>
+                    <span>If a staff member does not return before any namaz or toilet break allowance ends, time tracking stops automatically.</span>
+                </div>
+
                 <div class="field">
                     <label for="total_time_mode">Monthly total-time formula</label>
                     <select class="input" id="total_time_mode" name="total_time_mode" required>

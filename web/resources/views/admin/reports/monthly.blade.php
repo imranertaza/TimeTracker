@@ -7,7 +7,7 @@
     <div class="page-head">
         <div>
             <h2 class="page-title">Monthly time report</h2>
-            <p class="page-description">Exact working, idle and namaz break time for every staff member. Choose the formula used to generate the monthly total.</p>
+            <p class="page-description">Exact working, idle, namaz and toilet break time for every staff member. Choose the formula used to generate the monthly total.</p>
         </div>
         <div class="toolbar">
             <a class="button button-secondary" href="{{ route('admin.reports.index', ['date' => $month->format('Y-m-d')]) }}">Daily report</a>
@@ -46,7 +46,7 @@
         </div>
     </div>
 
-    <div class="grid grid-5 mb-3">
+    <div class="grid grid-6 mb-3">
         <div class="card stat-card tone-green">
             <div class="stat-label">Exact working</div>
             <div class="stat-value">{{ \App\Support\Format::duration($totals['active_seconds']) }}</div>
@@ -61,6 +61,11 @@
             <div class="stat-label">Namaz total</div>
             <div class="stat-value">{{ \App\Support\Format::duration($totals['namaz_seconds']) }}</div>
             <div class="stat-note">Asor + Maghrib</div>
+        </div>
+        <div class="card stat-card tone-blue">
+            <div class="stat-label">Toilet total</div>
+            <div class="stat-value">{{ \App\Support\Format::duration($totals['toilet_seconds']) }}</div>
+            <div class="stat-note">All staff this month</div>
         </div>
         <div class="card stat-card tone-blue">
             <div class="stat-label">Generated total</div>
@@ -91,6 +96,7 @@
                     <th>Asor</th>
                     <th>Maghrib</th>
                     <th>Namaz total</th>
+                    <th>Toilet</th>
                     <th>Total ({{ $modes[$mode] }})</th>
                     <th>Keys / clicks</th>
                     <th>Shots</th>
@@ -111,6 +117,7 @@
                         <td class="num tone-purple">{{ \App\Support\Format::duration($row['namaz']['asor']) }}</td>
                         <td class="num tone-purple">{{ \App\Support\Format::duration($row['namaz']['maghrib']) }}</td>
                         <td class="num">{{ \App\Support\Format::duration($row['namaz']['total']) }}</td>
+                        <td class="num tone-blue">{{ \App\Support\Format::duration($row['toilet_seconds']) }}</td>
                         <td class="num strong">{{ \App\Support\Format::duration($row['total_seconds']) }}</td>
                         <td class="num small">{{ number_format($row['keystrokes']) }} / {{ number_format($row['clicks']) }}</td>
                         <td class="num">{{ $row['screenshots'] }}</td>
@@ -119,7 +126,7 @@
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="10"><div class="empty">No staff accounts yet.</div></td></tr>
+                    <tr><td colspan="11"><div class="empty">No staff accounts yet.</div></td></tr>
                 @endforelse
                 </tbody>
             </table>
@@ -136,7 +143,7 @@
             </div>
             <div class="table-wrap">
                 <table>
-                    <thead><tr><th>Date</th><th>Exact working</th><th>Idle</th><th>Namaz</th><th>Total</th></tr></thead>
+                    <thead><tr><th>Date</th><th>Exact working</th><th>Idle</th><th>Namaz</th><th>Toilet</th><th>Total</th></tr></thead>
                     <tbody>
                     @foreach($summary['days'] as $day)
                         <tr>
@@ -144,6 +151,7 @@
                             <td class="num strong">{{ \App\Support\Format::duration($day['active_seconds']) }}</td>
                             <td class="num tone-orange">{{ \App\Support\Format::duration($day['idle_seconds']) }}</td>
                             <td class="num tone-purple">{{ \App\Support\Format::duration($day['namaz_seconds']) }}</td>
+                            <td class="num tone-blue">{{ \App\Support\Format::duration($day['toilet_seconds']) }}</td>
                             <td class="num strong">{{ \App\Support\Format::duration($day['total_seconds']) }}</td>
                         </tr>
                     @endforeach

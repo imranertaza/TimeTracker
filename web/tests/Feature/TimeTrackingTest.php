@@ -84,6 +84,43 @@ class TimeTrackingTest extends TestCase
         $this->assertSame('stopped', $session->fresh()->status);
     }
 
+    public function test_toilet_break_is_tracked_and_overrunning_it_stops_the_session(): void
+    {
+        $this->seed();
+        $this->freezeAt('2026-11-09 10:00:00');
+
+        $token = $this->postJson('/api/v1/auth/login', [
+            'email' => 'staff@officetracker.test',
+            'password' => 'Staff@12345',
+        ])->json('token');
+
+        $sessionUuid = (string) Str::uuid();
+        $breakUuid = (string) Str::uuid();
+
+        $this->withToken($token)->postJson('/api/v1/sessions/start', [
+            'uuid' => $sessionUuid,
+            'started_at' => now()->utc()->toIso8601String(),
+        ])->assertCreated();
+
+        $this->withToken($token)->postJson('/api/v1/breaks/start', [
+            'uuid' => $breakUuid,
+            'session_uuid' => $sessionUuid,
+            'type' => 'toilet',
+            'started_at' => now()->utc()->toIso8601String(),
+        ])->assertCreated()->assertJsonPath('planned_seconds', 900);
+
+        // The staff member comes back after the allowance: tracking stops.
+        $this->freezeAt('2026-11-09 10:20:00');
+
+        $this->withToken($token)->postJson('/api/v1/breaks/'.$breakUuid.'/end', [
+            'ended_at' => now()->utc()->toIso8601String(),
+        ])->assertOk();
+
+        $session = WorkSession::query()->where('uuid', $sessionUuid)->firstOrFail();
+        $this->assertSame('stopped', $session->status);
+        $this->assertSame(900, (int) $session->breaks()->where('type', 'toilet')->sum('duration_seconds'));
+    }
+
     public function test_tracking_cannot_start_outside_office_windows(): void
     {
         $this->seed();

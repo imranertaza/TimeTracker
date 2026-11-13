@@ -46,6 +46,7 @@ WORK_WINDOWS: tuple[tuple[time, time], ...] = (
 BREAK_TYPES: dict[str, dict[str, object]] = {
     "asor": {"label": "Asor Namaz", "minutes": 20},
     "maghrib": {"label": "Maghrib Namaz", "minutes": 15},
+    "toilet": {"label": "Toilet Break", "minutes": 15},
 }
 
 IDLE_THRESHOLD_SECONDS = 5 * 60
@@ -211,8 +212,12 @@ def apply_schedule_payload(payload: dict | None, db: object | None = None) -> bo
 
     raw_breaks = payload.get("breaks")
     if isinstance(raw_breaks, dict):
-        breaks: dict[str, dict[str, object]] = {}
-        for key in ("asor", "maghrib"):
+        # Start from the current rules so a break type that an older server
+        # payload does not mention (for example toilet) is never dropped.
+        breaks: dict[str, dict[str, object]] = {
+            key: dict(value) for key, value in BREAK_TYPES.items()
+        }
+        for key in ("asor", "maghrib", "toilet"):
             item = raw_breaks.get(key)
             if not isinstance(item, dict):
                 continue

@@ -39,12 +39,14 @@ class OfficeSettingsAndReportsTest extends TestCase
             'screenshot_interval_minutes' => 12,
             'asor_namaz_minutes' => 25,
             'maghrib_namaz_minutes' => 18,
+            'toilet_minutes' => 12,
             'total_time_mode' => 'active_idle',
         ])->assertRedirect('/admin/settings');
 
         $setting = OfficeSetting::current()->fresh();
         $this->assertSame([['start' => '10:00', 'end' => '12:00']], $setting->windows);
         $this->assertSame(25, $setting->asor_namaz_minutes);
+        $this->assertSame(12, $setting->toilet_minutes);
 
         $token = $this->postJson('/api/v1/auth/login', [
             'email' => 'staff@officetracker.test',
@@ -66,6 +68,7 @@ class OfficeSettingsAndReportsTest extends TestCase
         $this->assertSame('10:00', $response['schedule']['windows'][0]['start']);
         $this->assertSame('12:00', $response['schedule']['windows'][0]['end']);
         $this->assertSame(25, $response['schedule']['breaks']['asor']['minutes']);
+        $this->assertSame(12, $response['schedule']['breaks']['toilet']['minutes']);
     }
 
     public function test_per_staff_office_time_overrides_global_schedule(): void
@@ -170,6 +173,7 @@ class OfficeSettingsAndReportsTest extends TestCase
             'screenshot_interval_minutes' => 14,
             'asor_namaz_minutes' => 22,
             'maghrib_namaz_minutes' => 17,
+            'toilet_minutes' => 11,
             'total_time_mode' => 'active',
         ])->assertRedirect('/admin/settings');
 
@@ -185,6 +189,7 @@ class OfficeSettingsAndReportsTest extends TestCase
         $this->assertSame(9, $afterGlobal['schedule']['idle_threshold_minutes']);
         $this->assertSame(14, $afterGlobal['schedule']['screenshot_interval_minutes']);
         $this->assertSame(22, $afterGlobal['schedule']['breaks']['asor']['minutes']);
+        $this->assertSame(11, $afterGlobal['schedule']['breaks']['toilet']['minutes']);
 
         // A custom schedule for one staff member only changes that person's version.
         $this->actingAs($admin)->put('/admin/staff/'.$staffOne->id, [
@@ -219,6 +224,71 @@ class OfficeSettingsAndReportsTest extends TestCase
         // Unauthenticated calls are rejected.
         $this->flushHeaders();
         $this->getJson('/api/v1/settings')->assertUnauthorized();
+    }
+
+    public function test_per_staff_toilet_break_overrides_the_global_allowance(): void
+    {
+        $this->seed();
+        $admin = User::query()->where('email', 'admin@officetracker.test')->firstOrFail();
+        $staffOne = User::query()->where('email', 'staff@officetracker.test')->firstOrFail();
+        $staffTwo = User::query()->where('email', 'staff2@officetracker.test')->firstOrFail();
+
+        OfficeSetting::current()->forceFill(['toilet_minutes' => 15])->save();
+
+        $this->actingAs($admin)->put('/admin/staff/'.$staffOne->id, [
+            'name' => $staffOne->name,
+            'email' => $staffOne->email,
+            'is_active' => 1,
+            'schedule_mode' => 'global',
+            'toilet_minutes' => 7,
+        ])->assertRedirect('/admin/staff');
+
+        $this->assertSame(7, $staffOne->fresh()->toilet_minutes);
+        $this->assertNull($staffTwo->fresh()->toilet_minutes);
+
+        $staffOneToken = $this->postJson('/api/v1/auth/login', [
+            'email' => 'staff@officetracker.test',
+            'password' => 'Staff@12345',
+        ])->json('token');
+        $staffTwoToken = $this->postJson('/api/v1/auth/login', [
+            'email' => 'staff2@officetracker.test',
+            'password' => 'Staff@12345',
+        ])->json('token');
+
+        $this->withToken($staffOneToken)
+            ->getJson('/api/v1/settings')
+            ->assertOk()
+            ->assertJsonPath('schedule.breaks.toilet.minutes', 7);
+
+        $this->withToken($staffTwoToken)
+            ->getJson('/api/v1/settings')
+            ->assertOk()
+            ->assertJsonPath('schedule.breaks.toilet.minutes', 15);
+
+        $adminResponse = $this->actingAs($admin)
+            ->put('/admin/settings', [
+                'windows' => [
+                    ['start' => '09:00', 'end' => '13:15'],
+                    ['start' => '14:15', 'end' => '18:30'],
+                ],
+                'idle_threshold_minutes' => 5,
+                'screenshot_interval_minutes' => 10,
+                'asor_namaz_minutes' => 20,
+                'maghrib_namaz_minutes' => 15,
+                'toilet_minutes' => 18,
+                'total_time_mode' => 'active',
+            ]);
+        $adminResponse->assertRedirect('/admin/settings');
+
+        $this->withToken($staffOneToken)
+            ->getJson('/api/v1/settings')
+            ->assertOk()
+            ->assertJsonPath('schedule.breaks.toilet.minutes', 7);
+
+        $this->withToken($staffTwoToken)
+            ->getJson('/api/v1/settings')
+            ->assertOk()
+            ->assertJsonPath('schedule.breaks.toilet.minutes', 18);
     }
 
     public function test_admin_settings_and_staff_schedule_forms_render(): void
@@ -295,6 +365,17 @@ class OfficeSettingsAndReportsTest extends TestCase
             'completed' => true,
         ]);
 
+        BreakSession::query()->create([
+            'uuid' => (string) Str::uuid(),
+            'work_session_id' => $session->id,
+            'user_id' => $staff->id,
+            'type' => 'toilet',
+            'started_at' => $breakStart->addHours(2),
+            'ended_at' => $breakStart->addHours(2)->addMinutes(5),
+            'duration_seconds' => 300,
+            'completed' => true,
+        ]);
+
         $reports = app(ReportService::class);
         $all = $reports->monthly($staff, '2026-11', 'active_idle_namaz');
         $exact = $reports->monthly($staff, '2026-11', 'active');
@@ -304,7 +385,9 @@ class OfficeSettingsAndReportsTest extends TestCase
         $this->assertSame(3600, $all['active_seconds']);
         $this->assertSame(600, $all['idle_seconds']);
         $this->assertSame(2100, $all['namaz']['total']);
+        $this->assertSame(300, $all['toilet_seconds']);
         $this->assertSame(6300, $all['total_seconds']);
+        $this->assertSame(2100, $all['break_seconds'] - $all['toilet_seconds']);
         $this->assertSame(3600, $exact['total_seconds']);
         $this->assertSame(4200, $withIdle['total_seconds']);
         $this->assertSame(5700, $withNamaz['total_seconds']);

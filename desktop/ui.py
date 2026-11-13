@@ -187,7 +187,7 @@ class TrackerApp:
             "Keyboard and mouse activity, counted privately",
             f"Idle time starts after {config.IDLE_THRESHOLD_SECONDS // 60} minutes without input",
             f"Random screenshots every {config.SCREENSHOT_INTERVAL_SECONDS // 60} minutes",
-            f"{break_summary()} namaz breaks",
+            f"{break_summary()} break allowances",
             "Automatic API sync with the Laravel admin panel",
         ]
         for feature in features:
@@ -429,25 +429,37 @@ class TrackerApp:
         self.session_status.pack(fill="x", padx=24, pady=(10, 0))
         self.timer_label = tk.Label(session, text="00:00:00", bg=SURFACE, fg=TEXT, font=(MONO, 47, "bold"), anchor="w")
         self.timer_label.pack(fill="x", padx=24, pady=(0, 2))
-        self.session_sub = tk.Label(session, text="Active 00:00:00   ·   Idle 00:00:00   ·   Namaz 00:00:00", bg=SURFACE, fg=MUTED, font=(FONT, 9), anchor="w")
+        self.session_sub = tk.Label(session, text="Active 00:00:00   ·   Idle 00:00:00   ·   Break 00:00:00", bg=SURFACE, fg=MUTED, font=(FONT, 9), anchor="w")
         self.session_sub.pack(fill="x", padx=24)
         self.idle_hint = tk.Label(session, text="", bg=SURFACE, fg=MUTED, font=(FONT, 9), anchor="w")
         self.idle_hint.pack(fill="x", padx=24, pady=(7, 0))
 
         controls = tk.Frame(session, bg=SURFACE)
         controls.pack(fill="x", padx=24, pady=(17, 20))
-        self.start_button = self._button(controls, "▶  Start tracking", self._start, bg=GREEN)
+
+        # Session controls on the first line.
+        control_row = tk.Frame(controls, bg=SURFACE)
+        control_row.pack(fill="x")
+        self.start_button = self._button(control_row, "▶  Start tracking", self._start, bg=GREEN)
         self.start_button.pack(side="left", padx=(0, 8))
-        self.stop_button = self._button(controls, "■  Stop", self._stop, bg=RED_SOFT, fg=RED)
+        self.stop_button = self._button(control_row, "■  Stop", self._stop, bg=RED_SOFT, fg=RED)
         self.stop_button.pack(side="left", padx=(0, 8))
+        self.end_break_button = self._button(control_row, "End break", self._end_break, bg=ORANGE_SOFT, fg=ORANGE)
+        self.end_break_button.pack(side="left")
+
+        # Break buttons get their own line so every allowance (including the
+        # toilet break) stays visible in the default window size.
+        break_row = tk.Frame(controls, bg=SURFACE)
+        break_row.pack(fill="x", pady=(10, 0))
         asor_rule = config.BREAK_TYPES.get("asor", {"label": "Asor", "minutes": 20})
         maghrib_rule = config.BREAK_TYPES.get("maghrib", {"label": "Maghrib", "minutes": 15})
-        self.asor_button = self._button(controls, f"{asor_rule['label']} · {asor_rule['minutes']}m", lambda: self._start_break("asor"), bg=SOFT, fg=TEXT, highlightbackground=BORDER, highlightthickness=1)
+        toilet_rule = config.BREAK_TYPES.get("toilet", {"label": "Toilet", "minutes": 15})
+        self.asor_button = self._button(break_row, f"{asor_rule['label']} · {asor_rule['minutes']}m", lambda: self._start_break("asor"), bg=SOFT, fg=TEXT, highlightbackground=BORDER, highlightthickness=1)
         self.asor_button.pack(side="left", padx=(0, 8))
-        self.maghrib_button = self._button(controls, f"{maghrib_rule['label']} · {maghrib_rule['minutes']}m", lambda: self._start_break("maghrib"), bg=SOFT, fg=TEXT, highlightbackground=BORDER, highlightthickness=1)
+        self.maghrib_button = self._button(break_row, f"{maghrib_rule['label']} · {maghrib_rule['minutes']}m", lambda: self._start_break("maghrib"), bg=SOFT, fg=TEXT, highlightbackground=BORDER, highlightthickness=1)
         self.maghrib_button.pack(side="left", padx=(0, 8))
-        self.end_break_button = self._button(controls, "End break", self._end_break, bg=ORANGE_SOFT, fg=ORANGE)
-        self.end_break_button.pack(side="left")
+        self.toilet_button = self._button(break_row, f"{toilet_rule['label']} · {toilet_rule['minutes']}m", lambda: self._start_break("toilet"), bg=SOFT, fg=TEXT, highlightbackground=BORDER, highlightthickness=1)
+        self.toilet_button.pack(side="left")
 
         # Metrics
         metrics_head = tk.Frame(right_col, bg=BG)
@@ -466,7 +478,7 @@ class TrackerApp:
         metric_specs = [
             ("active", "ACTIVE TIME", GREEN, GREEN_SOFT),
             ("idle", "IDLE TIME", ORANGE, ORANGE_SOFT),
-            ("namaz", "NAMAZ BREAK", PURPLE, PURPLE_SOFT),
+            ("namaz", "BREAK TOTAL", PURPLE, PURPLE_SOFT),
             ("screens", "SCREENSHOTS", BLUE, BLUE_SOFT),
             ("keys", "KEYSTROKES", GREEN, GREEN_SOFT),
             ("clicks", "MOUSE CLICKS", BLUE, BLUE_SOFT),
@@ -550,7 +562,7 @@ class TrackerApp:
         self.rules_box.pack(fill="x", padx=16, pady=1)
         self._render_rules()
 
-        self.today_label = tk.Label(info_card, text="Today: 0m active · 0m idle · 0m namaz", bg=SURFACE, fg=TEXT, font=(FONT, 8, "bold"), anchor="w")
+        self.today_label = tk.Label(info_card, text="Today: 0m active · 0m idle · 0m namaz · 0m toilet", bg=SURFACE, fg=TEXT, font=(FONT, 8, "bold"), anchor="w")
         self.today_label.pack(fill="x", padx=16, pady=(8, 4))
 
         self.autostart_button = self._button(info_card, "", self._toggle_autostart, bg=SOFT, fg=TEXT, font=(FONT, 8, "bold"), padx=9, pady=4)
@@ -577,6 +589,7 @@ class TrackerApp:
         texts.append(f"Idle threshold · {config.IDLE_THRESHOLD_SECONDS // 60} minutes without input")
         texts.append(f"Screenshots · random once per {config.SCREENSHOT_INTERVAL_SECONDS // 60} minutes")
         texts.append(" · ".join(f"{rule['label']} · {rule['minutes']} minutes" for rule in config.BREAK_TYPES.values()))
+        texts.append("Tracking stops automatically if a break runs past its allowance")
         return texts
 
     def _render_rules(self) -> None:
@@ -592,7 +605,7 @@ class TrackerApp:
         return {
             "active": "Productive time",
             "idle": f"After {config.IDLE_THRESHOLD_SECONDS // 60} min no input",
-            "namaz": "Today total",
+            "namaz": "Namaz + toilet",
             "screens": f"Every {config.SCREENSHOT_INTERVAL_SECONDS // 60} minutes",
             "keys": "This session",
             "clicks": "This session",
@@ -608,9 +621,11 @@ class TrackerApp:
     def _refresh_break_buttons(self) -> None:
         asor = config.BREAK_TYPES.get("asor", {"label": "Asor", "minutes": 20})
         maghrib = config.BREAK_TYPES.get("maghrib", {"label": "Maghrib", "minutes": 15})
+        toilet = config.BREAK_TYPES.get("toilet", {"label": "Toilet", "minutes": 15})
         try:
             self.asor_button.configure(text=f"{asor['label']} · {asor['minutes']}m")
             self.maghrib_button.configure(text=f"{maghrib['label']} · {maghrib['minutes']}m")
+            self.toilet_button.configure(text=f"{toilet['label']} · {toilet['minutes']}m")
         except tk.TclError:
             pass
 
@@ -660,7 +675,7 @@ class TrackerApp:
             except tk.TclError:
                 parts.append(())
 
-        for name in ("asor_button", "maghrib_button"):
+        for name in ("asor_button", "maghrib_button", "toilet_button"):
             widget = getattr(self, name, None)
             try:
                 parts.append(widget.cget("text") if widget is not None else "")
@@ -704,9 +719,11 @@ class TrackerApp:
     def _start_break(self, break_type: str) -> None:
         break_config = config.BREAK_TYPES[break_type]
         if not messagebox.askyesno(
-            "Start namaz break?",
-            f"{break_config['label']} break is {break_config['minutes']} minutes.\n\n"
-            "Time tracking and screenshots will pause during the break.",
+            f"Start {break_config['label']}?",
+            f"{break_config['label']} is {break_config['minutes']} minutes.\n\n"
+            "Time tracking and screenshots will pause during the break. "
+            "If you do not return and end the break before the allowance ends, "
+            "time tracking stops automatically.",
             parent=self.root,
         ):
             return
@@ -795,6 +812,9 @@ class TrackerApp:
         snap = self.engine.snapshot()
         state = snap["state"]
         schedule = snap["schedule"]
+        # The big timer counts up during a session, but counts down while on a
+        # break so it is obvious that active time is paused.
+        display_seconds = snap["elapsed"]
         self.top_clock.configure(text=format_clock())
 
         if schedule.is_open:
@@ -817,14 +837,16 @@ class TrackerApp:
                 hint_fg = ORANGE
             self.timer_label.configure(fg=TEXT)
         elif state == "on_break":
-            status_text = "ON NAMAZ BREAK"
+            break_type = snap["break_type"] or ""
+            status_text = "ON TOILET BREAK" if break_type == "toilet" else "ON NAMAZ BREAK"
             status_bg, status_fg = ORANGE_SOFT, ORANGE
-            label = config.BREAK_TYPES.get(snap["break_type"] or "", {}).get("label", "Namaz")
+            label = config.BREAK_TYPES.get(break_type, {}).get("label", "Break")
             remaining = 0
             if snap["break_ends_at"]:
                 remaining = max(0, int((snap["break_ends_at"] - datetime.now(snap["break_ends_at"].tzinfo)).total_seconds()))
-            session_text = f"{label} break · {format_duration(remaining, True)} remaining"
-            hint = "Tracking and screenshots are paused. Press End break when finished."
+            display_seconds = remaining
+            session_text = f"{label} · {format_duration(remaining, True)} remaining"
+            hint = "Tracking and screenshots are paused. Press End break when finished; tracking stops automatically at 00:00."
             hint_fg = ORANGE
             self.timer_label.configure(fg=ORANGE)
         else:
@@ -837,12 +859,12 @@ class TrackerApp:
 
         self.status_pill.configure(text=status_text, bg=status_bg, fg=status_fg)
         self.session_status.configure(text=session_text)
-        self.timer_label.configure(text=format_duration(snap["elapsed"], clock=True))
+        self.timer_label.configure(text=format_duration(display_seconds, clock=True))
         self.session_sub.configure(
             text=(
                 f"Active {format_duration(snap['active_seconds'], True)}   ·   "
                 f"Idle {format_duration(snap['idle_seconds'], True)}   ·   "
-                f"Namaz {format_duration(snap['break_seconds'], True)}"
+                f"Break {format_duration(snap['break_seconds'], True)}"
             )
         )
         self.idle_hint.configure(text=hint, fg=hint_fg)
@@ -851,6 +873,7 @@ class TrackerApp:
         self.stop_button.configure(state="normal" if state in ("running", "on_break") else "disabled")
         self.asor_button.configure(state="normal" if state == "running" else "disabled")
         self.maghrib_button.configure(state="normal" if state == "running" else "disabled")
+        self.toilet_button.configure(state="normal" if state == "running" else "disabled")
         self.end_break_button.configure(state="normal" if state == "on_break" else "disabled")
 
         self.metric_vars["active"].set(format_duration(snap["active_seconds"], True))
@@ -875,11 +898,13 @@ class TrackerApp:
             self.shot_hint.configure(text="Screenshots paused")
 
         today = self.db.today_summary(dhaka_now().date())
+        today_breaks = self.db.today_break_totals(dhaka_now().date())
         self.today_label.configure(
             text=(
                 f"Today: {format_duration(today['active_seconds'])} active · "
                 f"{format_duration(today['idle_seconds'])} idle · "
-                f"{format_duration(today['break_seconds'])} namaz"
+                f"{format_duration(today_breaks['namaz'])} namaz · "
+                f"{format_duration(today_breaks['toilet'])} toilet"
             )
         )
 

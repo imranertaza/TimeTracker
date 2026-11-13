@@ -24,26 +24,27 @@ Built for an office in **Dhaka, Bangladesh (Asia/Dhaka, UTC+6)**.
 - After **5 minutes without input**, time is recorded as **idle** and shown separately from active time.
 - Takes a **random screenshot once in every 10-minute block** while tracking.
 - Screenshots pause during namaz breaks and are uploaded to the Laravel server.
-- **Asor namaz break: 20 minutes. Maghrib namaz break: 15 minutes.** These allowances are configurable by the admin.
+- **Asor namaz break: 20 minutes. Maghrib namaz break: 15 minutes. Toilet break: 15 minutes.** These allowances are configurable by the admin globally and the toilet allowance can also be overridden per staff member.
 - Break time pauses active/idle tracking and is stored separately.
+- **A break that runs past its allowance stops time tracking automatically** instead of resuming the session. This applies to every namaz break and the toilet break.
 - Works offline: activity is queued in local SQLite and retried automatically.
-- Shows live session timer, active time, idle time, namaz time, keystrokes, clicks, screenshots and sync status.
-- **Picks up admin setting changes instantly** (within ~2 seconds): office windows, idle threshold, screenshot interval and namaz allowances are re-read from the server while the app is running, and the screen is refreshed to match.
+- Shows live session timer, active time, idle time, break time, today's namaz and toilet totals, keystrokes, clicks, screenshots and sync status.
+- **Picks up admin setting changes instantly** (within ~2 seconds): office windows, idle threshold, screenshot interval, and namaz/toilet allowances are re-read from the server while the app is running, and the screen is refreshed to match.
 - Auto-start can be toggled from the app footer.
 
 ### Laravel web panel (`web/`)
 
 - Admin and staff logins.
-- **Admin dashboard:** live online staff, exact working time, idle time, namaz totals, keyboard/mouse counts, screenshots and last heartbeat.
-- **Office time settings:** one global office schedule for every staff member, plus an optional custom office schedule for any individual staff member. Desktop apps receive the schedule on login and on every sync.
-- **Live setting updates:** any change made in the admin panel (global office hours, idle threshold, screenshot interval, namaz allowances or a staff member's custom schedule) reaches every running desktop app within about 2 seconds. The app re-renders its office rules, break buttons and window badge and enforces the new hours immediately.
-- **Daily reports:** filter by date and staff member; exact working, idle, Asor and Maghrib namaz; CSV export.
+- **Admin dashboard:** live online staff, exact working time, idle time, namaz and toilet totals, keyboard/mouse counts, screenshots and last heartbeat.
+- **Office time settings:** one global office schedule for every staff member, plus an optional custom office schedule for any individual staff member. The global toilet break allowance and a per-staff toilet override are configured here and under Staff accounts. Desktop apps receive the schedule on login and on every sync.
+- **Live setting updates:** any change made in the admin panel (global office hours, idle threshold, screenshot interval, namaz/toilet allowances or a staff member's custom schedule) reaches every running desktop app within about 2 seconds. The app re-renders its office rules, break buttons and window badge and enforces the new hours immediately.
+- **Daily reports:** filter by date and staff member; exact working, idle, Asor and Maghrib namaz, and every staff member's total toilet break time for the day; CSV export.
 - **Exact time reporting:** durations never lose their seconds and every session shows its start, end and elapsed wall clock time. A session from 08:20:40 to 08:25:00 therefore reads "Elapsed 4m 20s" and "Exact working 4m 18s" instead of a rounded "4m" that looked like a missing minute.
-- **Monthly reports:** exact working, idle and namaz totals for every staff member, daily breakdown, and CSV export.
+- **Monthly reports:** exact working, idle, namaz and toilet totals for every staff member, daily breakdown, and CSV export.
 - **Monthly total-time formula:** the admin can generate the monthly total as exact working only, exact + idle, exact + namaz, or exact + idle + namaz. The chosen formula is also used on staff reports.
-- **Staff management:** create, edit, deactivate, reset password; set a custom office time per staff member; deactivation revokes the desktop API token.
-- **Staff dashboard:** personal exact working/idle/namaz totals, 7-day chart, session history, breaks and screenshots.
-- **Staff reports:** each staff member can view their own daily and monthly exact working, idle, namaz and total time.
+- **Staff management:** create, edit, deactivate, reset password; set a custom office time and a custom toilet break allowance per staff member; deactivation revokes the desktop API token.
+- **Staff dashboard:** personal exact working/idle/namaz/toilet totals, 7-day chart, session history, breaks and screenshots.
+- **Staff reports:** each staff member can view their own daily and monthly exact working, idle, namaz, toilet and total time.
 - **Session detail page:** minute-by-minute activity and all screenshots.
 - All screenshots are private and served only to the owner or an admin.
 - API tokens are stored as SHA-256 hashes, not plain text.
@@ -154,7 +155,8 @@ This listens on `0.0.0.0:8000`, so staff PCs can use `http://SERVER-IP:8000/api/
   - idle/active classification
 - Active and idle are mutually exclusive. A minute can contain both (for example, 30 active seconds then 30 idle seconds).
 - Idle starts **after** five minutes with no keyboard or mouse input. The first five minutes are treated as active; after that, seconds are recorded as idle.
-- Break time is **not** counted as active or idle.
+- Break time is **not** counted as active or idle. Namaz and toilet breaks are stored by type, so daily and monthly reports show each total separately.
+- A break ends automatically when the staff member clicks **End break** inside the allowance. If the allowance runs out first, the work session is stopped automatically.
 - The Laravel server recalculates session totals from synced minute rows and break rows, so a modified client cannot simply inflate totals.
 - Daily reports use Asia/Dhaka day boundaries even though timestamps are stored in UTC.
 
@@ -171,14 +173,15 @@ total = exact working time + idle time + namaz break time
 ```
 
 The selected formula is saved as the default and is used on staff monthly reports.
-The admin can change it while generating any monthly report.
+The admin can change it while generating any monthly report. Toilet break time is
+reported separately and is not part of these total-time formulas.
 
 ---
 
 ## 5. Screenshot behaviour
 
 - A random moment is selected inside every 10-minute block while a session is running.
-- Screenshots are paused during namaz breaks and outside tracking.
+- Screenshots are paused during namaz and toilet breaks and outside tracking.
 - Images are compressed to JPEG and stored locally first:
   ```
   %LOCALAPPDATA%\OfficeTimeTracker\screenshots\YYYY-MM-DD\
@@ -257,7 +260,7 @@ Base URL: `http://127.0.0.1:8000/api/v1`
 | POST | `/sessions/start` | Start a session (office-window enforced) |
 | POST | `/sessions/{uuid}/sync` | Upload activity minutes and breaks |
 | POST | `/sessions/{uuid}/stop` | Stop the session |
-| POST | `/breaks/start` | Start Asor/Maghrib break |
+| POST | `/breaks/start` | Start an Asor, Maghrib or toilet break |
 | POST | `/breaks/{uuid}/end` | End a break |
 | POST | `/screenshots` | Upload a screenshot (multipart) |
 

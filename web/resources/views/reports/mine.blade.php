@@ -1,13 +1,13 @@
 @extends('layouts.app')
 
 @section('title', 'My reports')
-@section('subtitle', 'Daily and monthly exact working, idle and namaz time')
+@section('subtitle', 'Daily and monthly exact working, idle, namaz and toilet time')
 
 @section('content')
     <div class="page-head">
         <div>
             <h2 class="page-title">My time reports</h2>
-            <p class="page-description">Your exact working time, idle time and namaz break time for any day or month.</p>
+            <p class="page-description">Your exact working time, idle time, namaz and toilet break time for any day or month.</p>
         </div>
         <div class="toolbar">
             <form class="toolbar" method="GET" action="{{ route('reports.mine') }}">
@@ -46,7 +46,7 @@
             <a class="button button-secondary button-sm" href="{{ route('dashboard', ['date' => $date->format('Y-m-d')]) }}">Open timesheet</a>
         </div>
         <div class="card-pad">
-            <div class="grid grid-4">
+            <div class="grid grid-5">
                 <div class="card stat-card tone-green">
                     <div class="stat-label">Exact working</div>
                     <div class="stat-value">{{ \App\Support\Format::duration($summary['active_seconds']) }}</div>
@@ -63,6 +63,11 @@
                     <div class="stat-note">Asor + Maghrib</div>
                 </div>
                 <div class="card stat-card tone-blue">
+                    <div class="stat-label">Toilet break</div>
+                    <div class="stat-value">{{ \App\Support\Format::duration($summary['toilet_seconds']) }}</div>
+                    <div class="stat-note">Today total</div>
+                </div>
+                <div class="card stat-card tone-blue">
                     <div class="stat-label">Tracked</div>
                     <div class="stat-value">{{ \App\Support\Format::duration($summary['tracked_seconds']) }}</div>
                     <div class="stat-note">Exact working + idle</div>
@@ -71,7 +76,7 @@
         </div>
         <div class="table-wrap">
             <table>
-                <thead><tr><th>Started</th><th>Ended</th><th>Elapsed</th><th>Status</th><th>Exact working</th><th>Idle</th><th>Namaz</th><th>Shots</th><th></th></tr></thead>
+                <thead><tr><th>Started</th><th>Ended</th><th>Elapsed</th><th>Status</th><th>Exact working</th><th>Idle</th><th>Breaks</th><th>Shots</th><th></th></tr></thead>
                 <tbody>
                 @forelse($summary['sessions'] as $session)
                     <tr>
@@ -101,7 +106,7 @@
             </div>
         </div>
         <div class="card-pad">
-            <div class="grid grid-4">
+            <div class="grid grid-5">
                 <div class="card stat-card tone-green">
                     <div class="stat-label">Exact working</div>
                     <div class="stat-value">{{ \App\Support\Format::duration($monthly['active_seconds']) }}</div>
@@ -118,6 +123,11 @@
                     <div class="stat-note">Asor + Maghrib</div>
                 </div>
                 <div class="card stat-card tone-blue">
+                    <div class="stat-label">Toilet break</div>
+                    <div class="stat-value">{{ \App\Support\Format::duration($monthly['toilet_seconds']) }}</div>
+                    <div class="stat-note">Whole month</div>
+                </div>
+                <div class="card stat-card tone-blue">
                     <div class="stat-label">Total working time</div>
                     <div class="stat-value">{{ \App\Support\Format::duration($monthly['total_seconds']) }}</div>
                     <div class="stat-note">{{ $modes[$mode] }}</div>
@@ -126,7 +136,7 @@
         </div>
         <div class="table-wrap">
             <table>
-                <thead><tr><th>Date</th><th>Exact working</th><th>Idle</th><th>Namaz</th><th>Total</th></tr></thead>
+                <thead><tr><th>Date</th><th>Exact working</th><th>Idle</th><th>Namaz</th><th>Toilet</th><th>Total</th></tr></thead>
                 <tbody>
                 @foreach($monthly['days'] as $day)
                     <tr>
@@ -134,6 +144,7 @@
                         <td class="num strong">{{ \App\Support\Format::duration($day['active_seconds']) }}</td>
                         <td class="num tone-orange">{{ \App\Support\Format::duration($day['idle_seconds']) }}</td>
                         <td class="num tone-purple">{{ \App\Support\Format::duration($day['namaz_seconds']) }}</td>
+                        <td class="num tone-blue">{{ \App\Support\Format::duration($day['toilet_seconds']) }}</td>
                         <td class="num strong">{{ \App\Support\Format::duration($day['total_seconds']) }}</td>
                     </tr>
                 @endforeach

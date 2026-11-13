@@ -20,6 +20,7 @@ class User extends Authenticatable
         'is_active',
         'timezone',
         'office_windows',
+        'toilet_minutes',
     ];
 
     protected $hidden = [
@@ -36,6 +37,7 @@ class User extends Authenticatable
             'password' => 'hashed',
             'is_active' => 'boolean',
             'office_windows' => 'array',
+            'toilet_minutes' => 'integer',
         ];
     }
 

@@ -28,7 +28,7 @@
             @if($status === 'running')
                 The desktop tracker is running. Keep it open during your shift.
             @elseif($status === 'paused')
-                You are currently on a namaz break.
+                You are currently on a namaz or toilet break.
             @else
                 Start tracking from the desktop app inside an allowed work window.
             @endif
@@ -47,13 +47,17 @@
                 <div class="hero-stat-value">{{ \App\Support\Format::duration($summary['namaz']['total'], true) }}</div>
             </div>
             <div>
+                <div class="hero-stat-label">Toilet</div>
+                <div class="hero-stat-value">{{ \App\Support\Format::duration($summary['toilet_seconds'], true) }}</div>
+            </div>
+            <div>
                 <div class="hero-stat-label">Tracked</div>
                 <div class="hero-stat-value">{{ \App\Support\Format::duration($summary['tracked_seconds'], true) }}</div>
             </div>
         </div>
     </section>
 
-    <div class="grid grid-4 mb-3">
+    <div class="grid grid-5 mb-3">
         <div class="card stat-card tone-green">
             <div class="stat-label">Keyboard presses</div>
             <div class="stat-value">{{ number_format($summary['keystrokes']) }}</div>
@@ -73,6 +77,11 @@
             <div class="stat-label">Maghrib break</div>
             <div class="stat-value">{{ \App\Support\Format::duration($summary['namaz']['maghrib']) }}</div>
             <div class="stat-note">{{ \App\Support\WorkSchedule::breakRules(auth()->user())['maghrib']['minutes'] }} minute allowance</div>
+        </div>
+        <div class="card stat-card tone-blue">
+            <div class="stat-label">Toilet break</div>
+            <div class="stat-value">{{ \App\Support\Format::duration($summary['toilet_seconds']) }}</div>
+            <div class="stat-note">{{ \App\Support\WorkSchedule::breakRules(auth()->user())['toilet']['minutes'] }} minute allowance</div>
         </div>
     </div>
 
@@ -165,7 +174,7 @@
                     <th>Status</th>
                     <th>Active</th>
                     <th>Idle</th>
-                    <th>Namaz</th>
+                    <th>Breaks</th>
                     <th>Shots</th>
                     <th></th>
                 </tr>
@@ -196,8 +205,8 @@
         <div class="card">
             <div class="card-head">
                 <div>
-                    <h3 class="card-title">Namaz breaks</h3>
-                    <div class="card-subtitle">Total {{ \App\Support\Format::duration($summary['namaz']['total']) }} today</div>
+                    <h3 class="card-title">Namaz and toilet breaks</h3>
+                    <div class="card-subtitle">Namaz {{ \App\Support\Format::duration($summary['namaz']['total']) }} · Toilet {{ \App\Support\Format::duration($summary['toilet_seconds']) }} today</div>
                 </div>
             </div>
             <div class="table-wrap">
@@ -211,7 +220,7 @@
                             <td class="num">{{ \App\Support\Format::duration($break->duration_seconds) }}</td>
                         </tr>
                     @empty
-                        <tr><td colspan="3"><div class="empty">No namaz breaks recorded.</div></td></tr>
+                        <tr><td colspan="3"><div class="empty">No breaks recorded.</div></td></tr>
                     @endforelse
                     </tbody>
                 </table>

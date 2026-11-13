@@ -88,7 +88,7 @@ class SessionController extends Controller
             'activity.*.is_idle' => ['nullable', 'boolean'],
             'breaks' => ['nullable', 'array', 'max:50'],
             'breaks.*.uuid' => ['required_with:breaks', 'uuid'],
-            'breaks.*.type' => ['required_with:breaks', 'in:asor,maghrib'],
+            'breaks.*.type' => ['required_with:breaks', 'in:asor,maghrib,toilet'],
             'breaks.*.started_at' => ['required_with:breaks', 'date'],
             'breaks.*.ended_at' => ['nullable', 'date'],
             'breaks.*.duration_seconds' => ['nullable', 'integer', 'min:0', 'max:7200'],

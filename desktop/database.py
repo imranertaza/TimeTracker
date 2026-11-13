@@ -185,6 +185,31 @@ class Database:
             ).fetchone()
         return dict(row) if row else {"active_seconds": 0, "idle_seconds": 0, "break_seconds": 0}
 
+    def today_break_totals(self, local_day: date) -> dict[str, int]:
+        """Total break seconds per type for sessions that started on a local day."""
+        start, end = day_bounds_utc(local_day)
+        with self._lock:
+            rows = self.connection.execute(
+                """
+                SELECT b.type AS type, COALESCE(SUM(b.duration_seconds), 0) AS seconds
+                FROM breaks b
+                JOIN sessions s ON s.uuid = b.session_uuid
+                WHERE s.started_at >= ? AND s.started_at < ?
+                GROUP BY b.type
+                """,
+                (iso_utc(start), iso_utc(end)),
+            ).fetchall()
+
+        totals = {"asor": 0, "maghrib": 0, "toilet": 0, "namaz": 0, "total": 0}
+        for row in rows:
+            seconds = int(row["seconds"] or 0)
+            break_type = str(row["type"] or "")
+            totals[break_type] = totals.get(break_type, 0) + seconds
+            totals["total"] += seconds
+            if break_type in ("asor", "maghrib"):
+                totals["namaz"] += seconds
+        return totals
+
     def latest_session(self) -> sqlite3.Row | None:
         with self._lock:
             return self.connection.execute(
@@ -278,6 +303,13 @@ class Database:
                 "WHERE uuid = ?",
                 (ended_at, max(0, int(duration_seconds)), 1 if completed else 0, now, uuid),
             )
+
+    def open_breaks(self, session_uuid: str) -> list[sqlite3.Row]:
+        with self._lock:
+            return self.connection.execute(
+                "SELECT * FROM breaks WHERE session_uuid = ? AND ended_at IS NULL ORDER BY started_at ASC",
+                (session_uuid,),
+            ).fetchall()
 
     def pending_breaks(self, session_uuid: str) -> list[sqlite3.Row]:
         with self._lock:

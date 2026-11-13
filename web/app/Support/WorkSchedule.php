@@ -74,11 +74,34 @@ class WorkSchedule
                 'label' => (string) config('tracker.breaks.maghrib.label', 'Maghrib Namaz'),
                 'minutes' => (int) $setting->maghrib_namaz_minutes,
             ],
+            'toilet' => [
+                'label' => (string) config('tracker.breaks.toilet.label', 'Toilet Break'),
+                'minutes' => self::toiletMinutes($user),
+            ],
         ];
+    }
+
+    /**
+     * Toilet allowance for a staff member. A null per-user value means the
+     * global office setting applies.
+     */
+    public static function toiletMinutes(?User $user = null): int
+    {
+        $minutes = $user?->toilet_minutes;
+
+        if ($minutes === null) {
+            $minutes = OfficeSetting::current()->toilet_minutes;
+        }
+
+        return max(1, (int) $minutes);
     }
 
     public static function breakMinutes(string $type, ?User $user = null): int
     {
+        if ($type === 'toilet') {
+            return self::toiletMinutes($user);
+        }
+
         return (int) (self::breakRules($user)[$type]['minutes'] ?? 20);
     }
 
@@ -302,8 +325,10 @@ class WorkSchedule
             'screenshot_interval_minutes' => (int) $setting->screenshot_interval_minutes,
             'asor_namaz_minutes' => (int) $setting->asor_namaz_minutes,
             'maghrib_namaz_minutes' => (int) $setting->maghrib_namaz_minutes,
+            'toilet_minutes' => (int) $setting->toilet_minutes,
             'total_time_mode' => (string) $setting->total_time_mode,
             'office_windows' => $user?->office_windows,
+            'staff_toilet_minutes' => $user?->toilet_minutes,
         ];
 
         return substr(hash('sha256', (string) json_encode($fingerprint)), 0, 32);

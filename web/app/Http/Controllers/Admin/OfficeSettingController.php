@@ -37,6 +37,7 @@ class OfficeSettingController extends Controller
             'screenshot_interval_minutes' => ['required', 'integer', 'min:1', 'max:180'],
             'asor_namaz_minutes' => ['required', 'integer', 'min:1', 'max:180'],
             'maghrib_namaz_minutes' => ['required', 'integer', 'min:1', 'max:180'],
+            'toilet_minutes' => ['required', 'integer', 'min:1', 'max:180'],
             'total_time_mode' => ['required', Rule::in(array_keys(ReportService::totalModes()))],
         ]);
 
@@ -48,6 +49,7 @@ class OfficeSettingController extends Controller
             'screenshot_interval_minutes' => $data['screenshot_interval_minutes'],
             'asor_namaz_minutes' => $data['asor_namaz_minutes'],
             'maghrib_namaz_minutes' => $data['maghrib_namaz_minutes'],
+            'toilet_minutes' => $data['toilet_minutes'],
             'total_time_mode' => $data['total_time_mode'],
         ])->save();
 

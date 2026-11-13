@@ -4,6 +4,11 @@
 @section('subtitle', $session->user->name . ' · ' . \App\Support\Format::dateTime($session->started_at))
 
 @section('content')
+    @php
+        $namazBreakSeconds = $breaks->whereIn('type', ['asor', 'maghrib'])->sum('duration_seconds');
+        $toiletBreakSeconds = $breaks->where('type', 'toilet')->sum('duration_seconds');
+    @endphp
+
     <div class="page-head">
         <div>
             <h2 class="page-title">Session breakdown</h2>
@@ -15,7 +20,7 @@
         <a class="button button-secondary" href="{{ url()->previous() }}">Back</a>
     </div>
 
-    <div class="grid grid-5 mb-3">
+    <div class="grid grid-6 mb-3">
         <div class="card stat-card tone-green">
             <div class="stat-label">Active</div>
             <div class="stat-value">{{ \App\Support\Format::duration($session->active_seconds) }}</div>
@@ -26,7 +31,11 @@
         </div>
         <div class="card stat-card tone-purple">
             <div class="stat-label">Namaz break</div>
-            <div class="stat-value">{{ \App\Support\Format::duration($session->break_seconds) }}</div>
+            <div class="stat-value">{{ \App\Support\Format::duration($namazBreakSeconds) }}</div>
+        </div>
+        <div class="card stat-card tone-blue">
+            <div class="stat-label">Toilet break</div>
+            <div class="stat-value">{{ \App\Support\Format::duration($toiletBreakSeconds) }}</div>
         </div>
         <div class="card stat-card tone-blue">
             <div class="stat-label">Screenshots</div>
@@ -97,14 +106,14 @@
                 </div>
 
                 <div class="divider"></div>
-                <h4 class="card-title mb-2">Namaz breaks</h4>
+                <h4 class="card-title mb-2">Breaks</h4>
                 @forelse($breaks as $break)
                     <div class="detail-row">
                         <span class="detail-label">{{ $break->label }} · {{ \App\Support\Format::time($break->started_at) }}</span>
                         <span class="detail-value">{{ \App\Support\Format::duration($break->duration_seconds) }}</span>
                     </div>
                 @empty
-                    <div class="small muted">No namaz break in this session.</div>
+                    <div class="small muted">No breaks in this session.</div>
                 @endforelse
             </div>
         </div>

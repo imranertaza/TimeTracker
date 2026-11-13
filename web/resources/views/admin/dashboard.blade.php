@@ -7,7 +7,7 @@
     <div class="page-head">
         <div>
             <h2 class="page-title">Office overview</h2>
-            <p class="page-description">Live attendance, productivity and namaz break totals for the selected day.</p>
+            <p class="page-description">Live attendance, productivity, namaz and toilet break totals for the selected day.</p>
         </div>
         <form class="toolbar" method="GET" action="{{ route('dashboard') }}">
             <input class="input input-sm" type="date" name="date" value="{{ $date->format('Y-m-d') }}">
@@ -29,7 +29,7 @@
         </span>
     </div>
 
-    <div class="grid grid-5 mb-3">
+    <div class="grid grid-6 mb-3">
         <div class="card stat-card tone-green">
             <div class="stat-label">Staff online</div>
             <div class="stat-value">{{ $totals['online'] }} <span class="small muted">/ {{ $totals['staff'] }}</span></div>
@@ -51,6 +51,11 @@
             <div class="stat-note">Asor + Maghrib combined</div>
         </div>
         <div class="card stat-card tone-blue">
+            <div class="stat-label">Toilet breaks</div>
+            <div class="stat-value">{{ \App\Support\Format::duration($totals['toilet_seconds']) }}</div>
+            <div class="stat-note">All staff combined</div>
+        </div>
+        <div class="card stat-card tone-gray">
             <div class="stat-label">Screenshots</div>
             <div class="stat-value">{{ $totals['screenshots'] }}</div>
             <div class="stat-note">Random captures, every 10 min</div>
@@ -77,6 +82,7 @@
                     <th>Exact working</th>
                     <th>Idle</th>
                     <th>Namaz</th>
+                    <th>Toilet</th>
                     <th>Keys / clicks</th>
                     <th>Shots</th>
                     <th>Last heartbeat</th>
@@ -102,6 +108,7 @@
                         <td class="num strong">{{ \App\Support\Format::duration($row['active_seconds']) }}</td>
                         <td class="num tone-orange">{{ \App\Support\Format::duration($row['idle_seconds']) }}</td>
                         <td class="num tone-purple">{{ \App\Support\Format::duration($row['namaz']['total']) }}</td>
+                        <td class="num tone-blue">{{ \App\Support\Format::duration($row['toilet_seconds']) }}</td>
                         <td class="num small"><span class="strong">{{ number_format($row['keystrokes']) }}</span> / {{ number_format($row['clicks']) }}</td>
                         <td class="num">{{ $row['screenshots'] }}</td>
                         <td class="small muted">{{ \App\Support\Format::dateTime($row['last_seen_at']) }}</td>
@@ -114,7 +121,7 @@
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="9"><div class="empty">No active staff accounts yet.</div></td></tr>
+                    <tr><td colspan="10"><div class="empty">No active staff accounts yet.</div></td></tr>
                 @endforelse
                 </tbody>
             </table>
@@ -158,6 +165,8 @@
                     <div class="detail-row"><span class="detail-label">Total tracked</span><span class="detail-value">{{ \App\Support\Format::duration($totals['tracked_seconds']) }}</span></div>
                     <div class="detail-row"><span class="detail-label">Active time</span><span class="detail-value tone-green">{{ \App\Support\Format::duration($totals['active_seconds']) }}</span></div>
                     <div class="detail-row"><span class="detail-label">Idle time</span><span class="detail-value tone-orange">{{ \App\Support\Format::duration($totals['idle_seconds']) }}</span></div>
+                    <div class="detail-row"><span class="detail-label">Namaz breaks</span><span class="detail-value tone-purple">{{ \App\Support\Format::duration($totals['namaz_seconds']) }}</span></div>
+                    <div class="detail-row"><span class="detail-label">Toilet breaks</span><span class="detail-value tone-blue">{{ \App\Support\Format::duration($totals['toilet_seconds']) }}</span></div>
                     <div class="detail-row"><span class="detail-label">All breaks</span><span class="detail-value tone-purple">{{ \App\Support\Format::duration($totals['break_seconds']) }}</span></div>
                     <div class="detail-row"><span class="detail-label">Keyboard presses</span><span class="detail-value">{{ number_format($totals['keystrokes']) }}</span></div>
                     <div class="detail-row"><span class="detail-label">Mouse clicks</span><span class="detail-value">{{ number_format($totals['clicks']) }}</span></div>

@@ -7,7 +7,7 @@
     <div class="page-head">
         <div>
             <h2 class="page-title">Daily time report</h2>
-            <p class="page-description">Active, idle and namaz totals calculated from every synced desktop minute.</p>
+            <p class="page-description">Active, idle, namaz and toilet break totals calculated from every synced desktop minute.</p>
         </div>
         <div class="toolbar">
             <a class="button button-secondary" href="{{ route('admin.reports.monthly', ['month' => $date->format('Y-m')]) }}">Monthly report</a>
@@ -38,7 +38,7 @@
         </div>
     </div>
 
-    <div class="grid grid-5 mb-3">
+    <div class="grid grid-6 mb-3">
         <div class="card stat-card tone-green">
             <div class="stat-label">Exact working</div>
             <div class="stat-value">{{ \App\Support\Format::duration($totals['active_seconds']) }}</div>
@@ -55,6 +55,11 @@
             <div class="stat-note">Asor + Maghrib</div>
         </div>
         <div class="card stat-card tone-blue">
+            <div class="stat-label">Toilet total</div>
+            <div class="stat-value">{{ \App\Support\Format::duration($totals['toilet_seconds']) }}</div>
+            <div class="stat-note">All staff today</div>
+        </div>
+        <div class="card stat-card tone-gray">
             <div class="stat-label">Keyboard / mouse</div>
             <div class="stat-value">{{ number_format($totals['keystrokes']) }}</div>
             <div class="stat-note">{{ number_format($totals['clicks']) }} mouse clicks</div>
@@ -85,6 +90,7 @@
                     <th>Asor</th>
                     <th>Maghrib</th>
                     <th>Namaz total</th>
+                    <th>Toilet</th>
                     <th>Keys / clicks</th>
                     <th>Shots</th>
                     <th></th>
@@ -106,6 +112,7 @@
                         <td class="num tone-purple">{{ \App\Support\Format::duration($row['namaz']['asor']) }}</td>
                         <td class="num tone-purple">{{ \App\Support\Format::duration($row['namaz']['maghrib']) }}</td>
                         <td class="num strong">{{ \App\Support\Format::duration($row['namaz']['total']) }}</td>
+                        <td class="num tone-blue">{{ \App\Support\Format::duration($row['toilet_seconds']) }}</td>
                         <td class="num small">{{ number_format($row['keystrokes']) }} / {{ number_format($row['clicks']) }}</td>
                         <td class="num">{{ $row['screenshots'] }}</td>
                         <td class="text-right">
@@ -113,7 +120,7 @@
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="11"><div class="empty">No staff data for this date.</div></td></tr>
+                    <tr><td colspan="12"><div class="empty">No staff data for this date.</div></td></tr>
                 @endforelse
                 </tbody>
             </table>

@@ -18,7 +18,7 @@ class BreakController extends Controller
         $data = $request->validate([
             'uuid' => ['required', 'uuid'],
             'session_uuid' => ['required', 'uuid'],
-            'type' => ['required', 'in:asor,maghrib'],
+            'type' => ['required', 'in:asor,maghrib,toilet'],
             'started_at' => ['required', 'date'],
         ]);
 
@@ -40,8 +40,8 @@ class BreakController extends Controller
                 ->where('work_session_id', $session->id)
                 ->whereNull('ended_at')
                 ->get()
-                ->each(function (BreakSession $open) use ($startedAt): void {
-                    $planned = (int) (WorkSchedule::breakMinutes($open->type) * 60);
+                ->each(function (BreakSession $open) use ($startedAt, $user): void {
+                    $planned = (int) (WorkSchedule::breakMinutes($open->type, $user) * 60);
                     $open->forceFill([
                         'ended_at' => $startedAt,
                         'duration_seconds' => min($planned, max(0, (int) $open->started_at->diffInSeconds($startedAt))),
@@ -71,7 +71,7 @@ class BreakController extends Controller
         });
 
         return response()->json([
-            'message' => 'Namaz break started.',
+            'message' => 'Break started.',
             'break' => $this->breakPayload($break),
             'planned_seconds' => $planned,
             'schedule' => WorkSchedule::apiPayload($user),
@@ -93,7 +93,10 @@ class BreakController extends Controller
         $planned = (int) (WorkSchedule::breakMinutes($break->type, $request->user()) * 60);
 
         DB::transaction(function () use ($break, $endedAt, $planned, $request): void {
-            $duration = min($planned, max(0, (int) $break->started_at->diffInSeconds($endedAt)));
+            $actual = max(0, (int) $break->started_at->diffInSeconds($endedAt));
+            $duration = min($planned, $actual);
+            $overdue = $actual >= $planned;
+
             $break->forceFill([
                 'ended_at' => $endedAt,
                 'duration_seconds' => $duration,
@@ -102,9 +105,19 @@ class BreakController extends Controller
 
             $session = $break->workSession;
             if ($session && $session->status !== 'stopped') {
-                $session->forceFill([
-                    'status' => WorkSchedule::isWithinWindow($endedAt, $request->user()) ? 'running' : 'paused',
-                ])->save();
+                if ($overdue) {
+                    // The staff member did not return within the allowance, so
+                    // tracking stops automatically instead of resuming.
+                    $session->forceFill([
+                        'status' => 'stopped',
+                        'ended_at' => $endedAt,
+                    ])->save();
+                } else {
+                    $session->forceFill([
+                        'status' => WorkSchedule::isWithinWindow($endedAt, $request->user()) ? 'running' : 'paused',
+                    ])->save();
+                }
+
                 $session->forceFill([
                     'break_seconds' => (int) $session->breaks()->sum('duration_seconds'),
                 ])->save();
@@ -112,7 +125,7 @@ class BreakController extends Controller
         });
 
         return response()->json([
-            'message' => 'Namaz break ended.',
+            'message' => 'Break ended.',
             'break' => $this->breakPayload($break->fresh()),
             'schedule' => WorkSchedule::apiPayload($request->user()),
         ]);

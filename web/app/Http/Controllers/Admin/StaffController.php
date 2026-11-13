@@ -48,6 +48,7 @@ class StaffController extends Controller
             'is_active' => ['nullable', 'boolean'],
             'schedule_mode' => ['required', 'in:global,custom'],
             'windows' => ['nullable', 'array'],
+            'toilet_minutes' => ['nullable', 'integer', 'min:1', 'max:180'],
         ]);
 
         $windows = $data['schedule_mode'] === 'custom'
@@ -62,6 +63,7 @@ class StaffController extends Controller
             'is_active' => $request->boolean('is_active', true),
             'timezone' => config('tracker.timezone', 'Asia/Dhaka'),
             'office_windows' => $windows,
+            'toilet_minutes' => $data['toilet_minutes'] ?? null,
         ]);
 
         return redirect()->route('admin.staff.index')->with('success', 'Staff account created.');
@@ -88,6 +90,7 @@ class StaffController extends Controller
             'is_active' => ['nullable', 'boolean'],
             'schedule_mode' => ['required', 'in:global,custom'],
             'windows' => ['nullable', 'array'],
+            'toilet_minutes' => ['nullable', 'integer', 'min:1', 'max:180'],
         ]);
 
         $windows = $data['schedule_mode'] === 'custom'
@@ -99,6 +102,7 @@ class StaffController extends Controller
             'email' => $data['email'],
             'is_active' => $request->boolean('is_active'),
             'office_windows' => $windows,
+            'toilet_minutes' => $data['toilet_minutes'] ?? null,
         ]);
 
         if (! empty($data['password'])) {

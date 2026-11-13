@@ -94,6 +94,20 @@
                 </div>
                 @error('windows')<div class="errors mb-2">{{ $message }}</div>@enderror
 
+                <div class="divider"></div>
+                <h3 class="card-title mb-2">Break allowance</h3>
+                <div class="notice mb-2">
+                    <span>◉</span>
+                    <span>Global toilet break: <strong>{{ \App\Models\OfficeSetting::current()->toilet_minutes }} minutes</strong>. Leave the field below blank to use the global allowance, or set a custom toilet break for this staff member only.</span>
+                </div>
+
+                <div class="field">
+                    <label for="toilet_minutes">Custom toilet break (minutes)</label>
+                    <input class="input" id="toilet_minutes" name="toilet_minutes" type="number" min="1" max="180" value="{{ old('toilet_minutes', $staff->toilet_minutes) }}" placeholder="Use global setting">
+                    <p class="page-description" style="margin-top:6px">If this staff member does not return before the allowance ends, time tracking stops automatically.</p>
+                    @error('toilet_minutes')<div class="errors">{{ $message }}</div>@enderror
+                </div>
+
                 @if($staff->exists)
                     <div class="notice mb-2">
                         <span>◉</span>

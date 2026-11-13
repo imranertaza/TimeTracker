@@ -45,7 +45,7 @@ class ReportController extends Controller
             fwrite($out, "\xEF\xBB\xBF");
             fputcsv($out, [
                 'Staff', 'Email', 'Date', 'Exact working', 'Idle', 'Tracked', 'Asor Namaz', 'Maghrib Namaz',
-                'Total Namaz', 'Keystrokes', 'Clicks', 'Screenshots', 'Status',
+                'Total Namaz', 'Toilet Break', 'Keystrokes', 'Clicks', 'Screenshots', 'Status',
             ]);
 
             foreach ($rows as $row) {
@@ -59,6 +59,7 @@ class ReportController extends Controller
                     $this->hms($row['namaz']['asor']),
                     $this->hms($row['namaz']['maghrib']),
                     $this->hms($row['namaz']['total']),
+                    $this->hms($row['toilet_seconds']),
                     $row['keystrokes'],
                     $row['clicks'],
                     $row['screenshots'],
@@ -85,7 +86,7 @@ class ReportController extends Controller
             fwrite($out, "\xEF\xBB\xBF");
             fputcsv($out, [
                 'Staff', 'Email', 'Month', 'Exact working', 'Idle', 'Asor Namaz', 'Maghrib Namaz',
-                'Total Namaz', 'Total ('.$formula.')', 'Keystrokes', 'Clicks', 'Screenshots',
+                'Total Namaz', 'Toilet Break', 'Total ('.$formula.')', 'Keystrokes', 'Clicks', 'Screenshots',
             ]);
 
             foreach ($rows as $row) {
@@ -98,6 +99,7 @@ class ReportController extends Controller
                     $this->hms($row['namaz']['asor']),
                     $this->hms($row['namaz']['maghrib']),
                     $this->hms($row['namaz']['total']),
+                    $this->hms($row['toilet_seconds']),
                     $this->hms($row['total_seconds']),
                     $row['keystrokes'],
                     $row['clicks'],

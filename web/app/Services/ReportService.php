@@ -83,6 +83,7 @@ class ReportService
             'maghrib' => (int) $breaks->where('type', 'maghrib')->sum('duration_seconds'),
         ];
         $namaz['total'] = $namaz['asor'] + $namaz['maghrib'];
+        $toiletSeconds = (int) $breaks->where('type', 'toilet')->sum('duration_seconds');
 
         $running = $sessions->first(fn (WorkSession $session) => $session->is_running);
 
@@ -100,6 +101,7 @@ class ReportService
             'keystrokes' => (int) $activity->sum('keystrokes'),
             'clicks' => (int) $activity->sum('clicks'),
             'namaz' => $namaz,
+            'toilet_seconds' => $toiletSeconds,
             'status' => $running ? $running->status : ($sessions->isEmpty() ? 'not_started' : 'stopped'),
             'last_seen_at' => $user->last_seen_at,
         ];
@@ -132,6 +134,7 @@ class ReportService
             'tracked_seconds' => (int) $team->sum('tracked_seconds'),
             'break_seconds' => (int) $team->sum('break_seconds'),
             'namaz_seconds' => (int) $team->sum(fn (array $row) => $row['namaz']['total']),
+            'toilet_seconds' => (int) $team->sum('toilet_seconds'),
             'keystrokes' => (int) $team->sum('keystrokes'),
             'clicks' => (int) $team->sum('clicks'),
             'screenshots' => (int) $team->sum('screenshots'),
@@ -177,6 +180,7 @@ class ReportService
                 'active_seconds' => 0,
                 'idle_seconds' => 0,
                 'namaz_seconds' => 0,
+                'toilet_seconds' => 0,
                 'total_seconds' => 0,
             ];
         }
@@ -195,7 +199,12 @@ class ReportService
             if (! isset($days[$key])) {
                 continue;
             }
-            $days[$key]['namaz_seconds'] += (int) $row->duration_seconds;
+
+            if ($row->type === 'toilet') {
+                $days[$key]['toilet_seconds'] += (int) $row->duration_seconds;
+            } else {
+                $days[$key]['namaz_seconds'] += (int) $row->duration_seconds;
+            }
         }
 
         foreach ($days as $key => $day) {
@@ -215,6 +224,7 @@ class ReportService
             'maghrib' => (int) $breaks->where('type', 'maghrib')->sum('duration_seconds'),
         ];
         $namaz['total'] = $namaz['asor'] + $namaz['maghrib'];
+        $toiletSeconds = (int) $breaks->where('type', 'toilet')->sum('duration_seconds');
 
         return [
             'user' => $user,
@@ -228,6 +238,7 @@ class ReportService
             'keystrokes' => (int) $activity->sum('keystrokes'),
             'clicks' => (int) $activity->sum('clicks'),
             'namaz' => $namaz,
+            'toilet_seconds' => $toiletSeconds,
             'total_seconds' => self::combinedTotal($activeSeconds, $idleSeconds, $namaz['total'], $mode),
             'mode' => $mode,
         ];
@@ -258,6 +269,7 @@ class ReportService
             'idle_seconds' => (int) $team->sum('idle_seconds'),
             'break_seconds' => (int) $team->sum('break_seconds'),
             'namaz_seconds' => (int) $team->sum(fn (array $row) => $row['namaz']['total']),
+            'toilet_seconds' => (int) $team->sum('toilet_seconds'),
             'total_seconds' => (int) $team->sum('total_seconds'),
             'keystrokes' => (int) $team->sum('keystrokes'),
             'clicks' => (int) $team->sum('clicks'),
@@ -282,6 +294,7 @@ class ReportService
                 'active_seconds' => $summary['active_seconds'],
                 'idle_seconds' => $summary['idle_seconds'],
                 'namaz_seconds' => $summary['namaz']['total'],
+                'toilet_seconds' => $summary['toilet_seconds'],
             ];
         }
 

@@ -29,5 +29,9 @@ return [
             'label' => 'Maghrib Namaz',
             'minutes' => 15,
         ],
+        'toilet' => [
+            'label' => 'Toilet Break',
+            'minutes' => 15,
+        ],
     ],
 ];
