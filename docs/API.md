@@ -53,9 +53,11 @@ Response `200`:
       {"start": "14:15", "end": "18:30", "start_minutes": 855, "end_minutes": 1110}
     ],
     "idle_threshold_minutes": 5,
+    "stop_after_minutes": 0,
     "screenshot_interval_minutes": 10,
     "breaks": {
       "asor": {"label": "Asor Namaz", "minutes": 20},
+      "johor": {"label": "Johor Namaz", "minutes": 20},
       "maghrib": {"label": "Maghrib Namaz", "minutes": 15},
       "toilet": {"label": "Toilet Break", "minutes": 15}
     },
@@ -74,10 +76,27 @@ Logging in invalidates the previous desktop token for that user.
 
 The `schedule` object is per user. If an admin has set a custom office time for
 this staff member, `schedule.windows` contains those custom windows. Otherwise
-it contains the global office windows. Break allowances, idle threshold and
-screenshot interval come from the global office settings. The toilet allowance
-is the global value unless that staff member has a custom toilet allowance, in
-which case it appears in `schedule.breaks.toilet.minutes`.
+it contains the global office windows. The screenshot interval comes from the
+global office settings.
+
+`idle_threshold_minutes` and `stop_after_minutes` are two independent timers
+measured from the last keyboard or mouse input.
+
+- `idle_threshold_minutes`: after this many minutes without input, time is
+  recorded as idle. `0` disables idle time.
+- `stop_after_minutes`: after this many minutes without input, the session is
+  stopped automatically. `0` disables the automatic stop.
+
+The stop timer always has priority. When both are enabled and the idle timer is
+shorter, the time between them is idle and the session stops at the stop timer.
+When the stop timer is equal to or shorter than the idle timer, the session
+stops without recording any idle time.
+
+The inactivity timers and every break allowance are global unless that staff
+member has a per-staff override. A `null` per-staff value inherits the global
+setting, `0` disables an inactivity timer for the staff member, and a positive
+number overrides it. Overridden values appear in the same `schedule` fields for
+that staff member's token.
 
 ---
 
@@ -146,9 +165,11 @@ member's custom office time:
       {"start": "14:15", "end": "18:30", "start_minutes": 855, "end_minutes": 1110}
     ],
     "idle_threshold_minutes": 5,
+    "stop_after_minutes": 0,
     "screenshot_interval_minutes": 10,
     "breaks": {
       "asor": {"label": "Asor Namaz", "minutes": 20},
+      "johor": {"label": "Johor Namaz", "minutes": 20},
       "maghrib": {"label": "Maghrib Namaz", "minutes": 15},
       "toilet": {"label": "Toilet Break", "minutes": 15}
     },
@@ -165,9 +186,9 @@ member's custom office time:
 ```
 
 The `version` is a fingerprint of the global office settings **and** the
-staff member's own custom schedule. A global change produces a new version for
-every user; a custom schedule change only produces a new version for that
-staff member.
+staff member's own overrides (custom office schedule, idle/stop timers and break
+allowances). A global change produces a new version for every user; a per-staff
+change only produces a new version for that staff member.
 
 ---
 
@@ -256,8 +277,8 @@ Notes:
 
 - Activity rows are idempotent per `(session, minute_start)`.
 - `active_seconds` and `idle_seconds` are capped at 60.
-- Break `type` is `asor`, `maghrib` or `toilet`.
-- Break duration is capped at the configured allowance (Asor 1200 seconds, Maghrib 900 seconds, toilet 900 seconds by default or the staff member's override).
+- Break `type` is `asor`, `johor`, `maghrib` or `toilet`.
+- Break duration is capped at the configured allowance (Asor 1200 seconds, Johor 1200 seconds, Maghrib 900 seconds, toilet 900 seconds by default, or the staff member's override).
 - The server recalculates session totals from all activity and break rows.
 
 Response:
@@ -323,7 +344,7 @@ Content-Type: application/json
 }
 ```
 
-`type` is `asor`, `maghrib` or `toilet`. The session status becomes `paused`.
+`type` is `asor`, `johor`, `maghrib` or `toilet`. The session status becomes `paused`.
 
 ### End
 

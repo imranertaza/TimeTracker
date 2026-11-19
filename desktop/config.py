@@ -45,11 +45,15 @@ WORK_WINDOWS: tuple[tuple[time, time], ...] = (
 
 BREAK_TYPES: dict[str, dict[str, object]] = {
     "asor": {"label": "Asor Namaz", "minutes": 20},
+    "johor": {"label": "Johor Namaz", "minutes": 20},
     "maghrib": {"label": "Maghrib Namaz", "minutes": 15},
     "toilet": {"label": "Toilet Break", "minutes": 15},
 }
 
+# Both timers are measured from the last input. 0 disables that timer. When
+# both are enabled the stop timer has priority over the idle timer.
 IDLE_THRESHOLD_SECONDS = 5 * 60
+STOP_AFTER_SECONDS = 0
 SCREENSHOT_INTERVAL_SECONDS = 10 * 60
 SYNC_INTERVAL_SECONDS = 20
 SCREENSHOT_MAX_WIDTH = 1920
@@ -177,11 +181,18 @@ def apply_schedule_payload(payload: dict | None, db: object | None = None) -> bo
     the old schedule.
     """
     global WORK_WINDOWS, BREAK_TYPES, IDLE_THRESHOLD_SECONDS, SCREENSHOT_INTERVAL_SECONDS
+    global STOP_AFTER_SECONDS
 
     if not isinstance(payload, dict):
         return False
 
-    before = (WORK_WINDOWS, BREAK_TYPES, IDLE_THRESHOLD_SECONDS, SCREENSHOT_INTERVAL_SECONDS)
+    before = (
+        WORK_WINDOWS,
+        BREAK_TYPES,
+        IDLE_THRESHOLD_SECONDS,
+        STOP_AFTER_SECONDS,
+        SCREENSHOT_INTERVAL_SECONDS,
+    )
 
     windows: list[tuple[time, time]] = []
     raw_windows = payload.get("windows")
@@ -197,9 +208,16 @@ def apply_schedule_payload(payload: dict | None, db: object | None = None) -> bo
         WORK_WINDOWS = tuple(windows)
 
     try:
-        idle_minutes = int(payload.get("idle_threshold_minutes") or 0)
-        if idle_minutes > 0:
-            IDLE_THRESHOLD_SECONDS = idle_minutes * 60
+        idle_value = payload.get("idle_threshold_minutes")
+        if idle_value is not None:
+            IDLE_THRESHOLD_SECONDS = max(0, int(idle_value)) * 60
+    except (TypeError, ValueError):
+        pass
+
+    try:
+        stop_value = payload.get("stop_after_minutes")
+        if stop_value is not None:
+            STOP_AFTER_SECONDS = max(0, int(stop_value)) * 60
     except (TypeError, ValueError):
         pass
 
@@ -217,7 +235,7 @@ def apply_schedule_payload(payload: dict | None, db: object | None = None) -> bo
         breaks: dict[str, dict[str, object]] = {
             key: dict(value) for key, value in BREAK_TYPES.items()
         }
-        for key in ("asor", "maghrib", "toilet"):
+        for key in ("asor", "johor", "maghrib", "toilet"):
             item = raw_breaks.get(key)
             if not isinstance(item, dict):
                 continue
@@ -240,7 +258,13 @@ def apply_schedule_payload(payload: dict | None, db: object | None = None) -> bo
         except Exception:
             pass
 
-    after = (WORK_WINDOWS, BREAK_TYPES, IDLE_THRESHOLD_SECONDS, SCREENSHOT_INTERVAL_SECONDS)
+    after = (
+        WORK_WINDOWS,
+        BREAK_TYPES,
+        IDLE_THRESHOLD_SECONDS,
+        STOP_AFTER_SECONDS,
+        SCREENSHOT_INTERVAL_SECONDS,
+    )
 
     return before != after
 

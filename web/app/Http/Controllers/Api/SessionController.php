@@ -88,7 +88,7 @@ class SessionController extends Controller
             'activity.*.is_idle' => ['nullable', 'boolean'],
             'breaks' => ['nullable', 'array', 'max:50'],
             'breaks.*.uuid' => ['required_with:breaks', 'uuid'],
-            'breaks.*.type' => ['required_with:breaks', 'in:asor,maghrib,toilet'],
+            'breaks.*.type' => ['required_with:breaks', 'in:asor,johor,maghrib,toilet'],
             'breaks.*.started_at' => ['required_with:breaks', 'date'],
             'breaks.*.ended_at' => ['nullable', 'date'],
             'breaks.*.duration_seconds' => ['nullable', 'integer', 'min:0', 'max:7200'],
@@ -171,7 +171,7 @@ class SessionController extends Controller
                 ->whereNull('ended_at')
                 ->get()
                 ->each(function (BreakSession $break) use ($endedAt): void {
-                    $planned = (int) (WorkSchedule::breakMinutes($break->type) * 60);
+                    $planned = (int) (WorkSchedule::breakMinutes($break->type, $break->user) * 60);
                     $duration = min($planned, max(0, (int) $break->started_at->diffInSeconds($endedAt)));
                     $break->forceFill([
                         'ended_at' => $endedAt,

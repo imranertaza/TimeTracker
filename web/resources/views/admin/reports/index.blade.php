@@ -47,12 +47,12 @@
         <div class="card stat-card tone-orange">
             <div class="stat-label">Idle</div>
             <div class="stat-value">{{ \App\Support\Format::duration($totals['idle_seconds']) }}</div>
-            <div class="stat-note">No input for over 5 minutes</div>
+            <div class="stat-note">From the idle timer</div>
         </div>
         <div class="card stat-card tone-purple">
             <div class="stat-label">Namaz total</div>
             <div class="stat-value">{{ \App\Support\Format::duration($totals['namaz_seconds']) }}</div>
-            <div class="stat-note">Asor + Maghrib</div>
+            <div class="stat-note">Asor + Johor + Maghrib</div>
         </div>
         <div class="card stat-card tone-blue">
             <div class="stat-label">Toilet total</div>
@@ -88,6 +88,7 @@
                     <th>Idle</th>
                     <th>Tracked</th>
                     <th>Asor</th>
+                    <th>Johor</th>
                     <th>Maghrib</th>
                     <th>Namaz total</th>
                     <th>Toilet</th>
@@ -110,6 +111,7 @@
                         <td class="num tone-orange">{{ \App\Support\Format::duration($row['idle_seconds']) }}</td>
                         <td class="num">{{ \App\Support\Format::duration($row['tracked_seconds']) }}</td>
                         <td class="num tone-purple">{{ \App\Support\Format::duration($row['namaz']['asor']) }}</td>
+                        <td class="num tone-purple">{{ \App\Support\Format::duration($row['namaz']['johor']) }}</td>
                         <td class="num tone-purple">{{ \App\Support\Format::duration($row['namaz']['maghrib']) }}</td>
                         <td class="num strong">{{ \App\Support\Format::duration($row['namaz']['total']) }}</td>
                         <td class="num tone-blue">{{ \App\Support\Format::duration($row['toilet_seconds']) }}</td>
@@ -120,7 +122,7 @@
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="12"><div class="empty">No staff data for this date.</div></td></tr>
+                    <tr><td colspan="13"><div class="empty">No staff data for this date.</div></td></tr>
                 @endforelse
                 </tbody>
             </table>

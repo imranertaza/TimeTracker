@@ -48,8 +48,15 @@
                         <td>{{ $member->email }}</td>
                         <td class="small">
                             <div class="strong">{{ \App\Support\WorkSchedule::describeWindows($member) }}</div>
-                            <span class="badge {{ $member->office_windows ? 'badge-warning' : 'badge-muted' }}">{{ $member->office_windows ? 'Custom' : 'Global' }}</span>
-                            <div class="person-meta">Toilet break: {{ $member->toilet_minutes ? $member->toilet_minutes.' min (custom)' : \App\Models\OfficeSetting::current()->toilet_minutes.' min (global)' }}</div>
+                            <span class="badge {{ $member->office_windows ? 'badge-warning' : 'badge-muted' }}">{{ $member->office_windows ? 'Custom hours' : 'Global hours' }}</span>
+                            @php
+                                $customInactivity = $member->idle_threshold_minutes !== null || $member->stop_after_minutes !== null;
+                                $customBreaks = $member->asor_namaz_minutes !== null
+                                    || $member->johor_namaz_minutes !== null
+                                    || $member->maghrib_namaz_minutes !== null
+                                    || $member->toilet_minutes !== null;
+                            @endphp
+                            <div class="person-meta">Idle/stop: {{ $customInactivity ? 'custom' : 'global' }} · Breaks: {{ $customBreaks ? 'custom' : 'global' }}</div>
                         </td>
                         <td><span class="badge {{ $member->is_active ? 'badge-success' : 'badge-danger' }}">{{ $member->is_active ? 'Active' : 'Disabled' }}</span></td>
                         <td class="small muted">{{ \App\Support\Format::dateTime($member->last_seen_at) }}</td>

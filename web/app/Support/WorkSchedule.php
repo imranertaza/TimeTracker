@@ -68,46 +68,88 @@ class WorkSchedule
         return [
             'asor' => [
                 'label' => (string) config('tracker.breaks.asor.label', 'Asor Namaz'),
-                'minutes' => (int) $setting->asor_namaz_minutes,
+                'minutes' => self::breakAllowanceMinutes('asor', $user, (int) $setting->asor_namaz_minutes),
+            ],
+            'johor' => [
+                'label' => (string) config('tracker.breaks.johor.label', 'Johor Namaz'),
+                'minutes' => self::breakAllowanceMinutes('johor', $user, (int) $setting->johor_namaz_minutes),
             ],
             'maghrib' => [
                 'label' => (string) config('tracker.breaks.maghrib.label', 'Maghrib Namaz'),
-                'minutes' => (int) $setting->maghrib_namaz_minutes,
+                'minutes' => self::breakAllowanceMinutes('maghrib', $user, (int) $setting->maghrib_namaz_minutes),
             ],
             'toilet' => [
                 'label' => (string) config('tracker.breaks.toilet.label', 'Toilet Break'),
-                'minutes' => self::toiletMinutes($user),
+                'minutes' => self::breakAllowanceMinutes('toilet', $user, (int) $setting->toilet_minutes),
             ],
         ];
     }
 
     /**
-     * Toilet allowance for a staff member. A null per-user value means the
+     * Break allowance for a staff member. A null per-user value means the
      * global office setting applies.
      */
-    public static function toiletMinutes(?User $user = null): int
+    private static function breakAllowanceMinutes(string $type, ?User $user, int $globalMinutes): int
     {
-        $minutes = $user?->toilet_minutes;
+        $column = match ($type) {
+            'asor' => 'asor_namaz_minutes',
+            'johor' => 'johor_namaz_minutes',
+            'maghrib' => 'maghrib_namaz_minutes',
+            'toilet' => 'toilet_minutes',
+            default => null,
+        };
+
+        $minutes = $column !== null ? $user?->{$column} : null;
 
         if ($minutes === null) {
-            $minutes = OfficeSetting::current()->toilet_minutes;
+            $minutes = $globalMinutes;
         }
 
         return max(1, (int) $minutes);
     }
 
+    public static function toiletMinutes(?User $user = null): int
+    {
+        return self::breakAllowanceMinutes(
+            'toilet',
+            $user,
+            (int) OfficeSetting::current()->toilet_minutes,
+        );
+    }
+
     public static function breakMinutes(string $type, ?User $user = null): int
     {
-        if ($type === 'toilet') {
-            return self::toiletMinutes($user);
-        }
-
         return (int) (self::breakRules($user)[$type]['minutes'] ?? 20);
     }
 
+    /**
+     * Minutes without input before time is recorded as idle. A null per-user
+     * value means the global office setting applies; 0 disables idle time.
+     */
     public static function idleThresholdMinutes(?User $user = null): int
     {
-        return (int) OfficeSetting::current()->idle_threshold_minutes;
+        $minutes = $user?->idle_threshold_minutes;
+
+        if ($minutes === null) {
+            $minutes = OfficeSetting::current()->idle_threshold_minutes;
+        }
+
+        return max(0, (int) $minutes);
+    }
+
+    /**
+     * Minutes without input before tracking stops. A null per-user value means
+     * the global setting applies; 0 disables the automatic stop.
+     */
+    public static function stopAfterMinutes(?User $user = null): int
+    {
+        $minutes = $user?->stop_after_minutes;
+
+        if ($minutes === null) {
+            $minutes = OfficeSetting::current()->stop_after_minutes;
+        }
+
+        return max(0, (int) $minutes);
     }
 
     public static function screenshotIntervalMinutes(?User $user = null): int
@@ -301,6 +343,7 @@ class WorkSchedule
             'timezone' => self::timezone(),
             'windows' => self::windows($user),
             'idle_threshold_minutes' => self::idleThresholdMinutes($user),
+            'stop_after_minutes' => self::stopAfterMinutes($user),
             'screenshot_interval_minutes' => self::screenshotIntervalMinutes($user),
             'breaks' => self::breakRules($user),
             'status' => self::status(null, $user),
@@ -322,12 +365,19 @@ class WorkSchedule
             'timezone' => self::timezone(),
             'windows' => self::normaliseWindows($setting->windows),
             'idle_threshold_minutes' => (int) $setting->idle_threshold_minutes,
+            'stop_after_minutes' => (int) $setting->stop_after_minutes,
             'screenshot_interval_minutes' => (int) $setting->screenshot_interval_minutes,
             'asor_namaz_minutes' => (int) $setting->asor_namaz_minutes,
+            'johor_namaz_minutes' => (int) $setting->johor_namaz_minutes,
             'maghrib_namaz_minutes' => (int) $setting->maghrib_namaz_minutes,
             'toilet_minutes' => (int) $setting->toilet_minutes,
             'total_time_mode' => (string) $setting->total_time_mode,
             'office_windows' => $user?->office_windows,
+            'staff_idle_threshold_minutes' => $user?->idle_threshold_minutes,
+            'staff_stop_after_minutes' => $user?->stop_after_minutes,
+            'staff_asor_namaz_minutes' => $user?->asor_namaz_minutes,
+            'staff_johor_namaz_minutes' => $user?->johor_namaz_minutes,
+            'staff_maghrib_namaz_minutes' => $user?->maghrib_namaz_minutes,
             'staff_toilet_minutes' => $user?->toilet_minutes,
         ];
 

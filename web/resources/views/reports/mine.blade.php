@@ -55,12 +55,12 @@
                 <div class="card stat-card tone-orange">
                     <div class="stat-label">Idle</div>
                     <div class="stat-value">{{ \App\Support\Format::duration($summary['idle_seconds']) }}</div>
-                    <div class="stat-note">No input for over 5 minutes</div>
+                    <div class="stat-note">From the idle timer</div>
                 </div>
                 <div class="card stat-card tone-purple">
                     <div class="stat-label">Namaz break</div>
                     <div class="stat-value">{{ \App\Support\Format::duration($summary['namaz']['total']) }}</div>
-                    <div class="stat-note">Asor + Maghrib</div>
+                    <div class="stat-note">Asor + Johor + Maghrib</div>
                 </div>
                 <div class="card stat-card tone-blue">
                     <div class="stat-label">Toilet break</div>
@@ -120,7 +120,7 @@
                 <div class="card stat-card tone-purple">
                     <div class="stat-label">Namaz break</div>
                     <div class="stat-value">{{ \App\Support\Format::duration($monthly['namaz']['total']) }}</div>
-                    <div class="stat-note">Asor + Maghrib</div>
+                    <div class="stat-note">Asor + Johor + Maghrib</div>
                 </div>
                 <div class="card stat-card tone-blue">
                     <div class="stat-label">Toilet break</div>

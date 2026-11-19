@@ -200,13 +200,13 @@ class Database:
                 (iso_utc(start), iso_utc(end)),
             ).fetchall()
 
-        totals = {"asor": 0, "maghrib": 0, "toilet": 0, "namaz": 0, "total": 0}
+        totals = {"asor": 0, "johor": 0, "maghrib": 0, "toilet": 0, "namaz": 0, "total": 0}
         for row in rows:
             seconds = int(row["seconds"] or 0)
             break_type = str(row["type"] or "")
             totals[break_type] = totals.get(break_type, 0) + seconds
             totals["total"] += seconds
-            if break_type in ("asor", "maghrib"):
+            if break_type in ("asor", "johor", "maghrib"):
                 totals["namaz"] += seconds
         return totals
 

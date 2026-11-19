@@ -19,6 +19,7 @@ os.environ.setdefault("OTT_DATA_DIR", tempfile.mkdtemp(prefix="ott-engine-test-"
 from config import format_duration, iso_utc, minute_iso, utc_now  # noqa: E402
 from database import Database  # noqa: E402
 from engine import TrackingEngine  # noqa: E402
+import config as config_module  # noqa: E402
 import engine as engine_module  # noqa: E402
 
 FAILURES: list[str] = []
@@ -97,6 +98,25 @@ def test_engine_counts_the_wall_clock() -> None:
     db.close()
 
 
+def test_one_physical_click_is_counted_once() -> None:
+    print("\n-- mouse click counting --")
+    db = Database()
+    engine = TrackingEngine(db)
+    engine.state = "running"
+    engine.session_uuid = "click-check"
+    engine._minutes.clear()
+    engine._current_minute = minute_iso(utc_now())
+    engine._minutes[engine._current_minute] = engine._blank_minute()
+
+    # The Windows listener reports a press and a release for one click.
+    engine._on_click(0, 0, "left", True)
+    engine._on_click(0, 0, "left", False)
+
+    clicks = sum(int(row["clicks"]) for row in engine._minutes.values())
+    check("one physical click counted once", clicks, 1)
+    db.close()
+
+
 def test_break_allowance_expiry_stops_tracking() -> None:
     print("\n-- break allowance expiry --")
     db = Database()
@@ -145,6 +165,120 @@ def test_break_allowance_expiry_stops_tracking() -> None:
     db.close()
 
 
+def test_inactivity_timers_and_stop_priority() -> None:
+    print("\n-- inactivity timers --")
+    db = Database()
+    engine = TrackingEngine(db)
+    now = utc_now()
+
+    class NoIdle:
+        def seconds(self):
+            return None
+
+    original_window_check = engine_module.is_within_work_window
+    original_idle = config_module.IDLE_THRESHOLD_SECONDS
+    original_stop = config_module.STOP_AFTER_SECONDS
+    engine_module.is_within_work_window = lambda at=None: True
+    engine._win_idle = NoIdle()
+
+    def prime(session_uuid: str, idle_minutes: int) -> None:
+        db.create_session(session_uuid, iso_utc(now - timedelta(minutes=10)), "test-pc")
+        with engine._lock:
+            engine.state = "running"
+            engine.session_uuid = session_uuid
+            engine.started_at = now - timedelta(minutes=10)
+            engine.ended_at = None
+            engine.active_seconds = 0
+            engine.idle_seconds = 0
+            engine.break_seconds = 0
+            engine._current_minute = minute_iso(now)
+            engine._minutes.clear()
+            engine._minutes[engine._current_minute] = engine._blank_minute()
+            engine._last_tick = time.monotonic() - 2
+            engine._last_tick_wall = now - timedelta(seconds=2)
+            engine._partial_second = 0.0
+            engine._last_input = now - timedelta(minutes=idle_minutes)
+
+    def configure(idle_minutes: int, stop_minutes: int) -> None:
+        config_module.IDLE_THRESHOLD_SECONDS = idle_minutes * 60
+        config_module.STOP_AFTER_SECONDS = stop_minutes * 60
+
+    try:
+        # idle 2, stop 4: idle time starts at 2 minutes and the session stops
+        # at 4 minutes.
+        configure(2, 4)
+        prime("timers-idle-between", idle_minutes=3)
+        engine.tick()
+        check("idle between timers keeps tracking", engine.state, "running")
+        check("idle between timers is recorded", engine.idle_seconds > 0, True)
+        engine.stop_session("test cleanup")
+
+        prime("timers-idle-then-stop", idle_minutes=5)
+        engine.tick()
+        check("stop timer stops the session", engine.state, "idle")
+        check(
+            "stop timer closes the session",
+            db.get_session("timers-idle-then-stop")["status"],
+            "stopped",
+        )
+
+        # idle 4, stop 2: stop wins, so no idle time is ever recorded.
+        configure(4, 2)
+        prime("timers-stop-early", idle_minutes=1)
+        engine.tick()
+        check("stop priority keeps early input active", engine.state, "running")
+        check("stop priority records active time", engine.active_seconds > 0, True)
+        check("stop priority records no idle time", engine.idle_seconds, 0)
+        engine.stop_session("test cleanup")
+
+        prime("timers-stop-before-idle", idle_minutes=3)
+        engine.tick()
+        check("earlier stop timer stops the session", engine.state, "idle")
+        check("earlier stop timer records no idle time", engine.idle_seconds, 0)
+
+        # idle 2, stop 2: equal timers stop without idle time.
+        configure(2, 2)
+        prime("timers-stop-equal", idle_minutes=3)
+        engine.tick()
+        check("equal timers stop the session", engine.state, "idle")
+        check("equal timers record no idle time", engine.idle_seconds, 0)
+
+        # idle 2, stop 0: idle works and tracking never auto-stops.
+        configure(2, 0)
+        prime("timers-idle-only", idle_minutes=30)
+        engine.tick()
+        check("idle only keeps tracking", engine.state, "running")
+        check("idle only records idle time", engine.idle_seconds > 0, True)
+        engine.stop_session("test cleanup")
+
+        # idle 0, stop 4: no idle time, tracking stops at 4 minutes.
+        configure(0, 4)
+        prime("timers-stop-only", idle_minutes=3)
+        engine.tick()
+        check("stop only records active time", engine.active_seconds > 0, True)
+        check("stop only records no idle time", engine.idle_seconds, 0)
+        engine.stop_session("test cleanup")
+
+        prime("timers-stop-only-late", idle_minutes=5)
+        engine.tick()
+        check("stop only stops at its timer", engine.state, "idle")
+        check("stop only never records idle time", engine.idle_seconds, 0)
+
+        # idle 0, stop 0: both timers disabled.
+        configure(0, 0)
+        prime("timers-disabled", idle_minutes=30)
+        engine.tick()
+        check("disabled timers keep tracking", engine.state, "running")
+        check("disabled timers record active time", engine.active_seconds > 0, True)
+        check("disabled timers record no idle time", engine.idle_seconds, 0)
+        engine.stop_session("test cleanup")
+    finally:
+        engine_module.is_within_work_window = original_window_check
+        config_module.IDLE_THRESHOLD_SECONDS = original_idle
+        config_module.STOP_AFTER_SECONDS = original_stop
+        db.close()
+
+
 def test_restart_keeps_an_open_break_paused() -> None:
     print("\n-- restart during break --")
     db = Database()
@@ -188,7 +322,9 @@ def test_restart_keeps_an_open_break_paused() -> None:
 if __name__ == "__main__":
     test_durations_keep_their_seconds()
     test_engine_counts_the_wall_clock()
+    test_one_physical_click_is_counted_once()
     test_break_allowance_expiry_stops_tracking()
+    test_inactivity_timers_and_stop_priority()
     test_restart_keeps_an_open_break_paused()
 
     print()

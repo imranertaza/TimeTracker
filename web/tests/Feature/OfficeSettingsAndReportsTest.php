@@ -36,8 +36,10 @@ class OfficeSettingsAndReportsTest extends TestCase
                 ['start' => '', 'end' => ''],
             ],
             'idle_threshold_minutes' => 6,
+            'stop_after_minutes' => 22,
             'screenshot_interval_minutes' => 12,
             'asor_namaz_minutes' => 25,
+            'johor_namaz_minutes' => 21,
             'maghrib_namaz_minutes' => 18,
             'toilet_minutes' => 12,
             'total_time_mode' => 'active_idle',
@@ -45,7 +47,10 @@ class OfficeSettingsAndReportsTest extends TestCase
 
         $setting = OfficeSetting::current()->fresh();
         $this->assertSame([['start' => '10:00', 'end' => '12:00']], $setting->windows);
+        $this->assertSame(6, $setting->idle_threshold_minutes);
+        $this->assertSame(22, $setting->stop_after_minutes);
         $this->assertSame(25, $setting->asor_namaz_minutes);
+        $this->assertSame(21, $setting->johor_namaz_minutes);
         $this->assertSame(12, $setting->toilet_minutes);
 
         $token = $this->postJson('/api/v1/auth/login', [
@@ -67,7 +72,9 @@ class OfficeSettingsAndReportsTest extends TestCase
 
         $this->assertSame('10:00', $response['schedule']['windows'][0]['start']);
         $this->assertSame('12:00', $response['schedule']['windows'][0]['end']);
+        $this->assertSame(22, $response['schedule']['stop_after_minutes']);
         $this->assertSame(25, $response['schedule']['breaks']['asor']['minutes']);
+        $this->assertSame(21, $response['schedule']['breaks']['johor']['minutes']);
         $this->assertSame(12, $response['schedule']['breaks']['toilet']['minutes']);
     }
 
@@ -82,6 +89,8 @@ class OfficeSettingsAndReportsTest extends TestCase
             'email' => $staffOne->email,
             'is_active' => 1,
             'schedule_mode' => 'custom',
+            'inactivity_mode' => 'global',
+            'break_mode' => 'global',
             'windows' => [
                 ['start' => '12:00', 'end' => '15:00'],
                 ['start' => '', 'end' => ''],
@@ -124,6 +133,8 @@ class OfficeSettingsAndReportsTest extends TestCase
             'email' => $staffOne->email,
             'is_active' => 1,
             'schedule_mode' => 'global',
+            'inactivity_mode' => 'global',
+            'break_mode' => 'global',
             'windows' => [
                 ['start' => '12:00', 'end' => '15:00'],
             ],
@@ -170,8 +181,10 @@ class OfficeSettingsAndReportsTest extends TestCase
                 ['start' => '', 'end' => ''],
             ],
             'idle_threshold_minutes' => 9,
+            'stop_after_minutes' => 19,
             'screenshot_interval_minutes' => 14,
             'asor_namaz_minutes' => 22,
+            'johor_namaz_minutes' => 19,
             'maghrib_namaz_minutes' => 17,
             'toilet_minutes' => 11,
             'total_time_mode' => 'active',
@@ -187,8 +200,10 @@ class OfficeSettingsAndReportsTest extends TestCase
         $this->assertSame('11:00', $afterGlobal['schedule']['windows'][0]['start']);
         $this->assertSame('15:00', $afterGlobal['schedule']['windows'][0]['end']);
         $this->assertSame(9, $afterGlobal['schedule']['idle_threshold_minutes']);
+        $this->assertSame(19, $afterGlobal['schedule']['stop_after_minutes']);
         $this->assertSame(14, $afterGlobal['schedule']['screenshot_interval_minutes']);
         $this->assertSame(22, $afterGlobal['schedule']['breaks']['asor']['minutes']);
+        $this->assertSame(19, $afterGlobal['schedule']['breaks']['johor']['minutes']);
         $this->assertSame(11, $afterGlobal['schedule']['breaks']['toilet']['minutes']);
 
         // A custom schedule for one staff member only changes that person's version.
@@ -197,6 +212,8 @@ class OfficeSettingsAndReportsTest extends TestCase
             'email' => $staffOne->email,
             'is_active' => 1,
             'schedule_mode' => 'custom',
+            'inactivity_mode' => 'global',
+            'break_mode' => 'global',
             'windows' => [
                 ['start' => '12:00', 'end' => '16:00'],
                 ['start' => '', 'end' => ''],
@@ -240,10 +257,19 @@ class OfficeSettingsAndReportsTest extends TestCase
             'email' => $staffOne->email,
             'is_active' => 1,
             'schedule_mode' => 'global',
+            'inactivity_mode' => 'global',
+            'break_mode' => 'custom',
+            'asor_namaz_minutes' => 25,
+            'johor_namaz_minutes' => 21,
+            'maghrib_namaz_minutes' => 18,
             'toilet_minutes' => 7,
         ])->assertRedirect('/admin/staff');
 
-        $this->assertSame(7, $staffOne->fresh()->toilet_minutes);
+        $staffOne->refresh();
+        $this->assertSame(7, $staffOne->toilet_minutes);
+        $this->assertSame(25, $staffOne->asor_namaz_minutes);
+        $this->assertSame(21, $staffOne->johor_namaz_minutes);
+        $this->assertSame(18, $staffOne->maghrib_namaz_minutes);
         $this->assertNull($staffTwo->fresh()->toilet_minutes);
 
         $staffOneToken = $this->postJson('/api/v1/auth/login', [
@@ -272,8 +298,10 @@ class OfficeSettingsAndReportsTest extends TestCase
                     ['start' => '14:15', 'end' => '18:30'],
                 ],
                 'idle_threshold_minutes' => 5,
+                'stop_after_minutes' => 15,
                 'screenshot_interval_minutes' => 10,
                 'asor_namaz_minutes' => 20,
+                'johor_namaz_minutes' => 20,
                 'maghrib_namaz_minutes' => 15,
                 'toilet_minutes' => 18,
                 'total_time_mode' => 'active',
@@ -289,6 +317,201 @@ class OfficeSettingsAndReportsTest extends TestCase
             ->getJson('/api/v1/settings')
             ->assertOk()
             ->assertJsonPath('schedule.breaks.toilet.minutes', 18);
+
+        $this->withToken($staffOneToken)
+            ->getJson('/api/v1/settings')
+            ->assertOk()
+            ->assertJsonPath('schedule.breaks.asor.minutes', 25)
+            ->assertJsonPath('schedule.breaks.johor.minutes', 21)
+            ->assertJsonPath('schedule.breaks.maghrib.minutes', 18);
+    }
+
+    public function test_johor_namaz_break_uses_the_global_allowance_and_reports_totals(): void
+    {
+        $this->seed();
+        $this->freezeAt('2026-11-09 10:00:00');
+        OfficeSetting::current()->forceFill(['johor_namaz_minutes' => 20])->save();
+
+        $token = $this->postJson('/api/v1/auth/login', [
+            'email' => 'staff@officetracker.test',
+            'password' => 'Staff@12345',
+        ])->json('token');
+
+        $sessionUuid = (string) Str::uuid();
+        $breakUuid = (string) Str::uuid();
+
+        $this->withToken($token)->postJson('/api/v1/sessions/start', [
+            'uuid' => $sessionUuid,
+            'started_at' => now()->utc()->toIso8601String(),
+        ])->assertCreated();
+
+        $this->withToken($token)->postJson('/api/v1/breaks/start', [
+            'uuid' => $breakUuid,
+            'session_uuid' => $sessionUuid,
+            'type' => 'johor',
+            'started_at' => now()->utc()->toIso8601String(),
+        ])->assertCreated()->assertJsonPath('planned_seconds', 1200);
+
+        $this->freezeAt('2026-11-09 10:10:00');
+
+        $this->withToken($token)->postJson('/api/v1/breaks/'.$breakUuid.'/end', [
+            'ended_at' => now()->utc()->toIso8601String(),
+        ])->assertOk();
+
+        $this->assertSame(
+            600,
+            (int) BreakSession::query()->where('type', 'johor')->sum('duration_seconds'),
+        );
+
+        $staff = User::query()->where('email', 'staff@officetracker.test')->firstOrFail();
+        $summary = app(ReportService::class)->daily($staff, '2026-11-09');
+
+        $this->assertSame(600, $summary['namaz']['johor']);
+        $this->assertSame(600, $summary['namaz']['total']);
+
+        $this->withToken($token)
+            ->getJson('/api/v1/settings')
+            ->assertOk()
+            ->assertJsonPath('schedule.breaks.johor.minutes', 20)
+            ->assertJsonPath('schedule.breaks.johor.label', 'Johor Namaz');
+    }
+
+    public function test_per_staff_inactivity_timers_override_global(): void
+    {
+        $this->seed();
+        $admin = User::query()->where('email', 'admin@officetracker.test')->firstOrFail();
+        $staffOne = User::query()->where('email', 'staff@officetracker.test')->firstOrFail();
+        $staffTwo = User::query()->where('email', 'staff2@officetracker.test')->firstOrFail();
+
+        $this->actingAs($admin)->put('/admin/settings', [
+            'windows' => [
+                ['start' => '09:00', 'end' => '13:15'],
+                ['start' => '14:15', 'end' => '18:30'],
+            ],
+            'idle_threshold_minutes' => 5,
+            'stop_after_minutes' => 20,
+            'screenshot_interval_minutes' => 10,
+            'asor_namaz_minutes' => 20,
+            'johor_namaz_minutes' => 20,
+            'maghrib_namaz_minutes' => 15,
+            'toilet_minutes' => 15,
+            'total_time_mode' => 'active',
+        ])->assertRedirect('/admin/settings');
+
+        $this->actingAs($admin)->put('/admin/staff/'.$staffOne->id, [
+            'name' => $staffOne->name,
+            'email' => $staffOne->email,
+            'is_active' => 1,
+            'schedule_mode' => 'global',
+            'inactivity_mode' => 'custom',
+            'break_mode' => 'global',
+            'idle_threshold_minutes' => 2,
+            'stop_after_minutes' => 4,
+        ])->assertRedirect('/admin/staff');
+
+        $staffOne->refresh();
+        $this->assertSame(2, $staffOne->idle_threshold_minutes);
+        $this->assertSame(4, $staffOne->stop_after_minutes);
+        $this->assertNull($staffTwo->fresh()->idle_threshold_minutes);
+        $this->assertNull($staffTwo->fresh()->stop_after_minutes);
+
+        $staffOneToken = $this->postJson('/api/v1/auth/login', [
+            'email' => 'staff@officetracker.test',
+            'password' => 'Staff@12345',
+        ])->json('token');
+        $staffTwoToken = $this->postJson('/api/v1/auth/login', [
+            'email' => 'staff2@officetracker.test',
+            'password' => 'Staff@12345',
+        ])->json('token');
+
+        $this->withToken($staffOneToken)
+            ->getJson('/api/v1/settings')
+            ->assertOk()
+            ->assertJsonPath('schedule.idle_threshold_minutes', 2)
+            ->assertJsonPath('schedule.stop_after_minutes', 4);
+
+        $this->withToken($staffTwoToken)
+            ->getJson('/api/v1/settings')
+            ->assertOk()
+            ->assertJsonPath('schedule.idle_threshold_minutes', 5)
+            ->assertJsonPath('schedule.stop_after_minutes', 20);
+
+        // A per-staff 0 disables that timer without falling back to global.
+        $this->actingAs($admin)->put('/admin/staff/'.$staffOne->id, [
+            'name' => $staffOne->name,
+            'email' => $staffOne->email,
+            'is_active' => 1,
+            'schedule_mode' => 'global',
+            'inactivity_mode' => 'custom',
+            'break_mode' => 'global',
+            'idle_threshold_minutes' => 0,
+            'stop_after_minutes' => 20,
+        ])->assertRedirect('/admin/staff');
+
+        $staffOne->refresh();
+        $this->assertSame(0, $staffOne->idle_threshold_minutes);
+        $this->assertSame(20, $staffOne->stop_after_minutes);
+
+        $this->withToken($staffOneToken)
+            ->getJson('/api/v1/settings')
+            ->assertOk()
+            ->assertJsonPath('schedule.idle_threshold_minutes', 0)
+            ->assertJsonPath('schedule.stop_after_minutes', 20);
+
+        // Clearing both overrides makes the staff member follow the global rule again.
+        $this->actingAs($admin)->put('/admin/staff/'.$staffOne->id, [
+            'name' => $staffOne->name,
+            'email' => $staffOne->email,
+            'is_active' => 1,
+            'schedule_mode' => 'global',
+            'inactivity_mode' => 'global',
+            'break_mode' => 'global',
+            'idle_threshold_minutes' => '',
+            'stop_after_minutes' => '',
+        ])->assertRedirect('/admin/staff');
+
+        $staffOne->refresh();
+        $this->assertNull($staffOne->idle_threshold_minutes);
+        $this->assertNull($staffOne->stop_after_minutes);
+
+        $this->withToken($staffOneToken)
+            ->getJson('/api/v1/settings')
+            ->assertOk()
+            ->assertJsonPath('schedule.idle_threshold_minutes', 5)
+            ->assertJsonPath('schedule.stop_after_minutes', 20);
+    }
+
+    public function test_zero_global_timers_disable_idle_and_stop(): void
+    {
+        $this->seed();
+        $admin = User::query()->where('email', 'admin@officetracker.test')->firstOrFail();
+
+        $this->actingAs($admin)->put('/admin/settings', [
+            'windows' => [['start' => '09:00', 'end' => '18:00']],
+            'idle_threshold_minutes' => 0,
+            'stop_after_minutes' => 0,
+            'screenshot_interval_minutes' => 10,
+            'asor_namaz_minutes' => 20,
+            'johor_namaz_minutes' => 20,
+            'maghrib_namaz_minutes' => 15,
+            'toilet_minutes' => 15,
+            'total_time_mode' => 'active',
+        ])->assertRedirect('/admin/settings');
+
+        $setting = OfficeSetting::current()->fresh();
+        $this->assertSame(0, $setting->idle_threshold_minutes);
+        $this->assertSame(0, $setting->stop_after_minutes);
+
+        $token = $this->postJson('/api/v1/auth/login', [
+            'email' => 'staff@officetracker.test',
+            'password' => 'Staff@12345',
+        ])->json('token');
+
+        $this->withToken($token)
+            ->getJson('/api/v1/settings')
+            ->assertOk()
+            ->assertJsonPath('schedule.idle_threshold_minutes', 0)
+            ->assertJsonPath('schedule.stop_after_minutes', 0);
     }
 
     public function test_admin_settings_and_staff_schedule_forms_render(): void
@@ -300,13 +523,21 @@ class OfficeSettingsAndReportsTest extends TestCase
         $this->actingAs($admin)->get('/admin/settings')
             ->assertOk()
             ->assertSee('Office time settings')
-            ->assertSee('Global office windows');
+            ->assertSee('Global office windows')
+            ->assertSee('Inactivity handling')
+            ->assertSee('Idle time (minutes)')
+            ->assertSee('Stop time (minutes)')
+            ->assertSee('Johor namaz break (minutes)')
+            ->assertSee('0 = idle time disabled');
 
         $staff->forceFill(['office_windows' => [['start' => '12:00', 'end' => '15:00']]])->save();
 
         $this->actingAs($admin)->get('/admin/staff/'.$staff->id.'/edit')
             ->assertOk()
             ->assertSee('Custom office time for this staff member')
+            ->assertSee('Use global idle time and stop time')
+            ->assertSee('Use global break allowances')
+            ->assertSee('Custom break allowances for this staff member')
             ->assertSee('12:00');
     }
 

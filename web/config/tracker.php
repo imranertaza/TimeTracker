@@ -18,11 +18,25 @@ return [
 
     'idle_threshold_minutes' => 5,
 
+    /*
+    |--------------------------------------------------------------------------
+    | Inactivity handling
+    |--------------------------------------------------------------------------
+    | Both timers are independent and measured from the last input. A value of
+    | 0 disables that timer. When both are enabled the stop timer has priority,
+    | so idle time is only recorded while the stop timer has not been reached.
+    */
+    'stop_after_minutes' => 0,
+
     'screenshot_interval_minutes' => 10,
 
     'breaks' => [
         'asor' => [
             'label' => 'Asor Namaz',
+            'minutes' => 20,
+        ],
+        'johor' => [
+            'label' => 'Johor Namaz',
             'minutes' => 20,
         ],
         'maghrib' => [

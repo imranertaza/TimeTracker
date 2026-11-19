@@ -44,8 +44,8 @@ class ReportController extends Controller
             $out = fopen('php://output', 'w');
             fwrite($out, "\xEF\xBB\xBF");
             fputcsv($out, [
-                'Staff', 'Email', 'Date', 'Exact working', 'Idle', 'Tracked', 'Asor Namaz', 'Maghrib Namaz',
-                'Total Namaz', 'Toilet Break', 'Keystrokes', 'Clicks', 'Screenshots', 'Status',
+                'Staff', 'Email', 'Date', 'Exact working', 'Idle', 'Tracked', 'Asor Namaz', 'Johor Namaz',
+                'Maghrib Namaz', 'Total Namaz', 'Toilet Break', 'Keystrokes', 'Clicks', 'Screenshots', 'Status',
             ]);
 
             foreach ($rows as $row) {
@@ -57,6 +57,7 @@ class ReportController extends Controller
                     $this->hms($row['idle_seconds']),
                     $this->hms($row['tracked_seconds']),
                     $this->hms($row['namaz']['asor']),
+                    $this->hms($row['namaz']['johor']),
                     $this->hms($row['namaz']['maghrib']),
                     $this->hms($row['namaz']['total']),
                     $this->hms($row['toilet_seconds']),
@@ -85,8 +86,8 @@ class ReportController extends Controller
             $out = fopen('php://output', 'w');
             fwrite($out, "\xEF\xBB\xBF");
             fputcsv($out, [
-                'Staff', 'Email', 'Month', 'Exact working', 'Idle', 'Asor Namaz', 'Maghrib Namaz',
-                'Total Namaz', 'Toilet Break', 'Total ('.$formula.')', 'Keystrokes', 'Clicks', 'Screenshots',
+                'Staff', 'Email', 'Month', 'Exact working', 'Idle', 'Asor Namaz', 'Johor Namaz',
+                'Maghrib Namaz', 'Total Namaz', 'Toilet Break', 'Total ('.$formula.')', 'Keystrokes', 'Clicks', 'Screenshots',
             ]);
 
             foreach ($rows as $row) {
@@ -97,6 +98,7 @@ class ReportController extends Controller
                     $this->hms($row['active_seconds']),
                     $this->hms($row['idle_seconds']),
                     $this->hms($row['namaz']['asor']),
+                    $this->hms($row['namaz']['johor']),
                     $this->hms($row['namaz']['maghrib']),
                     $this->hms($row['namaz']['total']),
                     $this->hms($row['toilet_seconds']),

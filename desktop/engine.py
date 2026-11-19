@@ -165,7 +165,10 @@ class TrackingEngine:
         self.record_key()
 
     def _on_click(self, _x, _y, _button, _pressed) -> None:
-        self.record_click()
+        # Win32 reports both the button press and the release for one physical
+        # click, so count only the press half to avoid double counting.
+        if _pressed:
+            self.record_click()
 
     def record_key(self) -> None:
         self._record_event("keystrokes")
@@ -222,14 +225,14 @@ class TrackingEngine:
             self.emit("Time tracking started. Dhaka office window is open.")
             return True
 
-    def stop_session(self, reason: str = "Stopped by staff") -> None:
+    def stop_session(self, reason: str = "Stopped by staff", account: bool = True) -> None:
         with self._lock:
             if self.state not in ("running", "on_break") or not self.session_uuid:
                 return
             now = utc_now()
             if self.state == "on_break":
                 self._finish_break_locked(now, auto=True, resume=False)
-            else:
+            elif account:
                 # Count the seconds between the last tick and the stop.
                 self._account_time(now)
 
@@ -458,6 +461,15 @@ class TrackingEngine:
                 self.stop_session("Office hours ended")
                 return
 
+            # The stop timer always wins, so it is checked before idle time is
+            # accounted. A stop timer of 0 means automatic stop is disabled.
+            if (
+                config.STOP_AFTER_SECONDS > 0
+                and self._idle_age(now) >= config.STOP_AFTER_SECONDS
+            ):
+                self._stop_for_inactivity(now)
+                return
+
             self._account_time(now)
             self._flush_finished_minutes()
 
@@ -468,12 +480,51 @@ class TrackingEngine:
             if self.next_screenshot_at and now >= self.next_screenshot_at:
                 self._capture_screenshot(now)
 
-    def _account_time(self, now: datetime) -> None:
+    @staticmethod
+    def _idle_time_enabled() -> bool:
+        """Whether time can be recorded as idle at all.
+
+        Idle needs a positive idle timer. When a stop timer is also set, idle
+        only applies while it is shorter than the stop timer: at equal or
+        earlier stop times the stop wins and no idle time is recorded.
+        """
+        idle_seconds = config.IDLE_THRESHOLD_SECONDS
+        stop_seconds = config.STOP_AFTER_SECONDS
+
+        if idle_seconds <= 0:
+            return False
+
+        return stop_seconds <= 0 or idle_seconds < stop_seconds
+
+    def _stop_for_inactivity(self, now: datetime) -> None:
+        """Stop at the stop timer.
+
+        The stop timer has priority over idle, so the session ends at the exact
+        timeout moment instead of a few seconds later when the tick loop
+        notices it. Time between the idle timer and the stop timer is recorded
+        as idle, but time at or after the stop timer is not.
+        """
+        limit = max(1, int(config.STOP_AFTER_SECONDS))
+        cutoff = self._last_input + timedelta(seconds=limit)
+
+        if cutoff > now:
+            cutoff = now
+        if self._last_tick_wall and cutoff < self._last_tick_wall:
+            cutoff = self._last_tick_wall
+
+        self._account_time(cutoff, idle_override=self._idle_time_enabled())
+        self._flush_finished_minutes()
+        self.stop_session("Inactivity timeout", account=False)
+
+    def _account_time(self, now: datetime, idle_override: bool | None = None) -> None:
         """Add the time since the previous tick to the tracked minutes.
 
         The seconds are split over the minute buckets they really belong to, so
         a minute boundary that falls between two ticks is neither lost nor
         counted twice. The tracked total therefore matches the wall clock.
+
+        Idle time is only recorded when the idle timer is enabled and it is
+        not overruled by the stop timer.
         """
         elapsed = time.monotonic() - self._last_tick
 
@@ -496,7 +547,13 @@ class TrackingEngine:
             return
         self._partial_second -= whole
 
-        idle = self._idle_age(now) > config.IDLE_THRESHOLD_SECONDS
+        if idle_override is None:
+            idle = (
+                self._idle_time_enabled()
+                and self._idle_age(now) > config.IDLE_THRESHOLD_SECONDS
+            )
+        else:
+            idle = idle_override
         cursor = wall_start.replace(microsecond=0)
         remaining = whole
 
@@ -644,7 +701,10 @@ class TrackingEngine:
                 "idle_seconds": self.idle_seconds,
                 "break_seconds": self.break_seconds,
                 "idle_age": idle_age,
-                "is_idle": idle_age > config.IDLE_THRESHOLD_SECONDS,
+                "is_idle": (
+                    self._idle_time_enabled()
+                    and idle_age > config.IDLE_THRESHOLD_SECONDS
+                ),
                 "screenshot_count": self.screenshot_count,
                 "next_screenshot_at": self.next_screenshot_at,
                 "break_type": self.break_type,

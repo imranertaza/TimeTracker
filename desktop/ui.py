@@ -185,7 +185,7 @@ class TrackerApp:
         features = [
             f"{schedule_windows_label()} office windows",
             "Keyboard and mouse activity, counted privately",
-            f"Idle time starts after {config.IDLE_THRESHOLD_SECONDS // 60} minutes without input",
+            self._inactivity_rule_text(),
             f"Random screenshots every {config.SCREENSHOT_INTERVAL_SECONDS // 60} minutes",
             f"{break_summary()} break allowances",
             "Automatic API sync with the Laravel admin panel",
@@ -447,19 +447,31 @@ class TrackerApp:
         self.end_break_button = self._button(control_row, "End break", self._end_break, bg=ORANGE_SOFT, fg=ORANGE)
         self.end_break_button.pack(side="left")
 
-        # Break buttons get their own line so every allowance (including the
-        # toilet break) stays visible in the default window size.
+        # Break buttons get their own grid so every allowance stays visible in
+        # the default window size. New break types appear automatically.
         break_row = tk.Frame(controls, bg=SURFACE)
         break_row.pack(fill="x", pady=(10, 0))
-        asor_rule = config.BREAK_TYPES.get("asor", {"label": "Asor", "minutes": 20})
-        maghrib_rule = config.BREAK_TYPES.get("maghrib", {"label": "Maghrib", "minutes": 15})
-        toilet_rule = config.BREAK_TYPES.get("toilet", {"label": "Toilet", "minutes": 15})
-        self.asor_button = self._button(break_row, f"{asor_rule['label']} · {asor_rule['minutes']}m", lambda: self._start_break("asor"), bg=SOFT, fg=TEXT, highlightbackground=BORDER, highlightthickness=1)
-        self.asor_button.pack(side="left", padx=(0, 8))
-        self.maghrib_button = self._button(break_row, f"{maghrib_rule['label']} · {maghrib_rule['minutes']}m", lambda: self._start_break("maghrib"), bg=SOFT, fg=TEXT, highlightbackground=BORDER, highlightthickness=1)
-        self.maghrib_button.pack(side="left", padx=(0, 8))
-        self.toilet_button = self._button(break_row, f"{toilet_rule['label']} · {toilet_rule['minutes']}m", lambda: self._start_break("toilet"), bg=SOFT, fg=TEXT, highlightbackground=BORDER, highlightthickness=1)
-        self.toilet_button.pack(side="left")
+        for column in range(2):
+            break_row.grid_columnconfigure(column, weight=1, uniform="breaks")
+        self.break_buttons: dict[str, tk.Button] = {}
+        for index, (break_type, rule) in enumerate(config.BREAK_TYPES.items()):
+            button = self._button(
+                break_row,
+                f"{rule.get('label', break_type.title())} · {int(rule.get('minutes', 0))}m",
+                lambda selected=break_type: self._start_break(selected),
+                bg=SOFT,
+                fg=TEXT,
+                highlightbackground=BORDER,
+                highlightthickness=1,
+            )
+            button.grid(
+                row=index // 2,
+                column=index % 2,
+                sticky="ew",
+                padx=(0, 8) if index % 2 == 0 else (0, 0),
+                pady=(0, 8),
+            )
+            self.break_buttons[break_type] = button
 
         # Metrics
         metrics_head = tk.Frame(right_col, bg=BG)
@@ -581,12 +593,29 @@ class TrackerApp:
         self._tick_loop()
 
     # ------------------------------------------------------------------ schedule
+    def _inactivity_rule_text(self) -> str:
+        idle_minutes = config.IDLE_THRESHOLD_SECONDS // 60
+        stop_minutes = config.STOP_AFTER_SECONDS // 60
+
+        if idle_minutes > 0 and stop_minutes > 0:
+            if idle_minutes < stop_minutes:
+                return (
+                    f"Idle after {idle_minutes} min, tracking stops after "
+                    f"{stop_minutes} min without input"
+                )
+            return f"Tracking stops after {stop_minutes} min without input (no idle time)"
+        if idle_minutes > 0:
+            return f"Idle time starts after {idle_minutes} minutes without input"
+        if stop_minutes > 0:
+            return f"Tracking stops after {stop_minutes} minutes without input"
+        return "Idle tracking and automatic stop are disabled"
+
     def _rule_texts(self) -> list[str]:
         texts = [
             f"Window {index + 1} · {start.strftime('%H:%M')} – {end.strftime('%H:%M')}"
             for index, (start, end) in enumerate(config.WORK_WINDOWS)
         ]
-        texts.append(f"Idle threshold · {config.IDLE_THRESHOLD_SECONDS // 60} minutes without input")
+        texts.append(f"Inactivity · {self._inactivity_rule_text()}")
         texts.append(f"Screenshots · random once per {config.SCREENSHOT_INTERVAL_SECONDS // 60} minutes")
         texts.append(" · ".join(f"{rule['label']} · {rule['minutes']} minutes" for rule in config.BREAK_TYPES.values()))
         texts.append("Tracking stops automatically if a break runs past its allowance")
@@ -602,9 +631,13 @@ class TrackerApp:
             tk.Label(box, text="•  " + text, bg=SURFACE, fg=MUTED, font=(FONT, 8), anchor="w").pack(fill="x", pady=1)
 
     def _metric_note_text(self, key: str) -> str:
+        if config.IDLE_THRESHOLD_SECONDS > 0:
+            idle_note = f"After {config.IDLE_THRESHOLD_SECONDS // 60} min no input"
+        else:
+            idle_note = "Idle tracking disabled"
         return {
             "active": "Productive time",
-            "idle": f"After {config.IDLE_THRESHOLD_SECONDS // 60} min no input",
+            "idle": idle_note,
             "namaz": "Namaz + toilet",
             "screens": f"Every {config.SCREENSHOT_INTERVAL_SECONDS // 60} minutes",
             "keys": "This session",
@@ -619,15 +652,14 @@ class TrackerApp:
                 pass
 
     def _refresh_break_buttons(self) -> None:
-        asor = config.BREAK_TYPES.get("asor", {"label": "Asor", "minutes": 20})
-        maghrib = config.BREAK_TYPES.get("maghrib", {"label": "Maghrib", "minutes": 15})
-        toilet = config.BREAK_TYPES.get("toilet", {"label": "Toilet", "minutes": 15})
-        try:
-            self.asor_button.configure(text=f"{asor['label']} · {asor['minutes']}m")
-            self.maghrib_button.configure(text=f"{maghrib['label']} · {maghrib['minutes']}m")
-            self.toilet_button.configure(text=f"{toilet['label']} · {toilet['minutes']}m")
-        except tk.TclError:
-            pass
+        for break_type, button in getattr(self, "break_buttons", {}).items():
+            rule = config.BREAK_TYPES.get(break_type, {})
+            try:
+                button.configure(
+                    text=f"{rule.get('label', break_type.title())} · {int(rule.get('minutes', 0))}m"
+                )
+            except tk.TclError:
+                pass
 
     def _on_settings_changed(self, schedule: dict | None = None) -> None:
         """Called from the settings watcher thread when the admin changed something.
@@ -675,10 +707,9 @@ class TrackerApp:
             except tk.TclError:
                 parts.append(())
 
-        for name in ("asor_button", "maghrib_button", "toilet_button"):
-            widget = getattr(self, name, None)
+        for widget in getattr(self, "break_buttons", {}).values():
             try:
-                parts.append(widget.cget("text") if widget is not None else "")
+                parts.append(widget.cget("text"))
             except tk.TclError:
                 parts.append("")
 
@@ -830,11 +861,32 @@ class TrackerApp:
             status_text = "TRACKING"
             status_bg, status_fg = GREEN_SOFT, GREEN_DARK
             session_text = "Work session in progress"
-            hint = f"Activity detected just now · idle starts after {config.IDLE_THRESHOLD_SECONDS // 60} minutes without input"
-            hint_fg = MUTED
-            if snap["is_idle"]:
-                hint = f"Idle for {format_duration(snap['idle_age'])} — this time is being recorded as idle"
-                hint_fg = ORANGE
+            if config.STOP_AFTER_SECONDS > 0:
+                limit = max(1, int(config.STOP_AFTER_SECONDS))
+                remaining = max(0, limit - int(snap["idle_age"]))
+                hint = f"Activity detected just now · tracking stops after {limit // 60} minutes without input"
+                hint_fg = MUTED
+                if snap["idle_age"] >= 60 and snap["is_idle"]:
+                    hint = (
+                        f"Idle for {format_duration(snap['idle_age'])} — recording idle; "
+                        f"tracking stops in {format_duration(remaining)}"
+                    )
+                    hint_fg = ORANGE
+                elif snap["idle_age"] >= 60:
+                    hint = (
+                        f"No input for {format_duration(snap['idle_age'])} — "
+                        f"tracking stops in {format_duration(remaining)}"
+                    )
+                    hint_fg = ORANGE
+            elif config.IDLE_THRESHOLD_SECONDS > 0:
+                hint = f"Activity detected just now · idle starts after {config.IDLE_THRESHOLD_SECONDS // 60} minutes without input"
+                hint_fg = MUTED
+                if snap["is_idle"]:
+                    hint = f"Idle for {format_duration(snap['idle_age'])} — this time is being recorded as idle"
+                    hint_fg = ORANGE
+            else:
+                hint = "Activity detected just now · idle tracking and automatic stop are disabled"
+                hint_fg = MUTED
             self.timer_label.configure(fg=TEXT)
         elif state == "on_break":
             break_type = snap["break_type"] or ""
@@ -871,9 +923,8 @@ class TrackerApp:
 
         self.start_button.configure(state="normal" if state == "idle" and schedule.is_open else "disabled")
         self.stop_button.configure(state="normal" if state in ("running", "on_break") else "disabled")
-        self.asor_button.configure(state="normal" if state == "running" else "disabled")
-        self.maghrib_button.configure(state="normal" if state == "running" else "disabled")
-        self.toilet_button.configure(state="normal" if state == "running" else "disabled")
+        for button in getattr(self, "break_buttons", {}).values():
+            button.configure(state="normal" if state == "running" else "disabled")
         self.end_break_button.configure(state="normal" if state == "on_break" else "disabled")
 
         self.metric_vars["active"].set(format_duration(snap["active_seconds"], True))

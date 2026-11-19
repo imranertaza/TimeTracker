@@ -18,7 +18,7 @@ class BreakController extends Controller
         $data = $request->validate([
             'uuid' => ['required', 'uuid'],
             'session_uuid' => ['required', 'uuid'],
-            'type' => ['required', 'in:asor,maghrib,toilet'],
+            'type' => ['required', 'in:asor,johor,maghrib,toilet'],
             'started_at' => ['required', 'date'],
         ]);
 

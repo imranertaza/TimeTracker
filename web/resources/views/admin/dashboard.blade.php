@@ -43,12 +43,12 @@
         <div class="card stat-card tone-orange">
             <div class="stat-label">Idle time</div>
             <div class="stat-value">{{ \App\Support\Format::duration($totals['idle_seconds']) }}</div>
-            <div class="stat-note">After 5 minutes without input</div>
+            <div class="stat-note">From the idle timer</div>
         </div>
         <div class="card stat-card tone-purple">
             <div class="stat-label">Namaz breaks</div>
             <div class="stat-value">{{ \App\Support\Format::duration($totals['namaz_seconds']) }}</div>
-            <div class="stat-note">Asor + Maghrib combined</div>
+            <div class="stat-note">Asor + Johor + Maghrib combined</div>
         </div>
         <div class="card stat-card tone-blue">
             <div class="stat-label">Toilet breaks</div>
@@ -173,7 +173,7 @@
                 </div>
                 <div class="notice mt-2">
                     <span>◉</span>
-                    <span>Desktop clients sync automatically through the secured API. Idle starts after five minutes without keyboard or mouse input.</span>
+                    <span>Desktop clients sync automatically through the secured API. Idle time follows each staff member's idle timer, and sessions stop automatically when a stop timer is enabled and reached.</span>
                 </div>
             </div>
         </div>

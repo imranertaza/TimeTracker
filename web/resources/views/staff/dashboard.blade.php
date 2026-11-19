@@ -57,7 +57,7 @@
         </div>
     </section>
 
-    <div class="grid grid-5 mb-3">
+    <div class="grid grid-6 mb-3">
         <div class="card stat-card tone-green">
             <div class="stat-label">Keyboard presses</div>
             <div class="stat-value">{{ number_format($summary['keystrokes']) }}</div>
@@ -72,6 +72,11 @@
             <div class="stat-label">Asor break</div>
             <div class="stat-value">{{ \App\Support\Format::duration($summary['namaz']['asor']) }}</div>
             <div class="stat-note">{{ \App\Support\WorkSchedule::breakRules(auth()->user())['asor']['minutes'] }} minute allowance</div>
+        </div>
+        <div class="card stat-card tone-purple">
+            <div class="stat-label">Johor break</div>
+            <div class="stat-value">{{ \App\Support\Format::duration($summary['namaz']['johor']) }}</div>
+            <div class="stat-note">{{ \App\Support\WorkSchedule::breakRules(auth()->user())['johor']['minutes'] }} minute allowance</div>
         </div>
         <div class="card stat-card tone-orange">
             <div class="stat-label">Maghrib break</div>

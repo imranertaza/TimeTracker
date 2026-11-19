@@ -5,7 +5,7 @@
 
 @section('content')
     @php
-        $namazBreakSeconds = $breaks->whereIn('type', ['asor', 'maghrib'])->sum('duration_seconds');
+        $namazBreakSeconds = $breaks->whereIn('type', ['asor', 'johor', 'maghrib'])->sum('duration_seconds');
         $toiletBreakSeconds = $breaks->where('type', 'toilet')->sum('duration_seconds');
     @endphp
 

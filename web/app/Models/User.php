@@ -20,6 +20,11 @@ class User extends Authenticatable
         'is_active',
         'timezone',
         'office_windows',
+        'idle_threshold_minutes',
+        'stop_after_minutes',
+        'asor_namaz_minutes',
+        'johor_namaz_minutes',
+        'maghrib_namaz_minutes',
         'toilet_minutes',
     ];
 
@@ -37,6 +42,11 @@ class User extends Authenticatable
             'password' => 'hashed',
             'is_active' => 'boolean',
             'office_windows' => 'array',
+            'idle_threshold_minutes' => 'integer',
+            'stop_after_minutes' => 'integer',
+            'asor_namaz_minutes' => 'integer',
+            'johor_namaz_minutes' => 'integer',
+            'maghrib_namaz_minutes' => 'integer',
             'toilet_minutes' => 'integer',
         ];
     }

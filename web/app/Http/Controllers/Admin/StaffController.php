@@ -48,7 +48,14 @@ class StaffController extends Controller
             'is_active' => ['nullable', 'boolean'],
             'schedule_mode' => ['required', 'in:global,custom'],
             'windows' => ['nullable', 'array'],
-            'toilet_minutes' => ['nullable', 'integer', 'min:1', 'max:180'],
+            'inactivity_mode' => ['required', 'in:global,custom'],
+            'idle_threshold_minutes' => ['nullable', 'required_if:inactivity_mode,custom', 'integer', 'min:0', 'max:120'],
+            'stop_after_minutes' => ['nullable', 'required_if:inactivity_mode,custom', 'integer', 'min:0', 'max:240'],
+            'break_mode' => ['required', 'in:global,custom'],
+            'asor_namaz_minutes' => ['nullable', 'required_if:break_mode,custom', 'integer', 'min:1', 'max:180'],
+            'johor_namaz_minutes' => ['nullable', 'required_if:break_mode,custom', 'integer', 'min:1', 'max:180'],
+            'maghrib_namaz_minutes' => ['nullable', 'required_if:break_mode,custom', 'integer', 'min:1', 'max:180'],
+            'toilet_minutes' => ['nullable', 'required_if:break_mode,custom', 'integer', 'min:1', 'max:180'],
         ]);
 
         $windows = $data['schedule_mode'] === 'custom'
@@ -63,7 +70,24 @@ class StaffController extends Controller
             'is_active' => $request->boolean('is_active', true),
             'timezone' => config('tracker.timezone', 'Asia/Dhaka'),
             'office_windows' => $windows,
-            'toilet_minutes' => $data['toilet_minutes'] ?? null,
+            'idle_threshold_minutes' => $data['inactivity_mode'] === 'custom'
+                ? (int) $data['idle_threshold_minutes']
+                : null,
+            'stop_after_minutes' => $data['inactivity_mode'] === 'custom'
+                ? (int) $data['stop_after_minutes']
+                : null,
+            'asor_namaz_minutes' => $data['break_mode'] === 'custom'
+                ? (int) $data['asor_namaz_minutes']
+                : null,
+            'johor_namaz_minutes' => $data['break_mode'] === 'custom'
+                ? (int) $data['johor_namaz_minutes']
+                : null,
+            'maghrib_namaz_minutes' => $data['break_mode'] === 'custom'
+                ? (int) $data['maghrib_namaz_minutes']
+                : null,
+            'toilet_minutes' => $data['break_mode'] === 'custom'
+                ? (int) $data['toilet_minutes']
+                : null,
         ]);
 
         return redirect()->route('admin.staff.index')->with('success', 'Staff account created.');
@@ -90,7 +114,14 @@ class StaffController extends Controller
             'is_active' => ['nullable', 'boolean'],
             'schedule_mode' => ['required', 'in:global,custom'],
             'windows' => ['nullable', 'array'],
-            'toilet_minutes' => ['nullable', 'integer', 'min:1', 'max:180'],
+            'inactivity_mode' => ['required', 'in:global,custom'],
+            'idle_threshold_minutes' => ['nullable', 'required_if:inactivity_mode,custom', 'integer', 'min:0', 'max:120'],
+            'stop_after_minutes' => ['nullable', 'required_if:inactivity_mode,custom', 'integer', 'min:0', 'max:240'],
+            'break_mode' => ['required', 'in:global,custom'],
+            'asor_namaz_minutes' => ['nullable', 'required_if:break_mode,custom', 'integer', 'min:1', 'max:180'],
+            'johor_namaz_minutes' => ['nullable', 'required_if:break_mode,custom', 'integer', 'min:1', 'max:180'],
+            'maghrib_namaz_minutes' => ['nullable', 'required_if:break_mode,custom', 'integer', 'min:1', 'max:180'],
+            'toilet_minutes' => ['nullable', 'required_if:break_mode,custom', 'integer', 'min:1', 'max:180'],
         ]);
 
         $windows = $data['schedule_mode'] === 'custom'
@@ -102,7 +133,24 @@ class StaffController extends Controller
             'email' => $data['email'],
             'is_active' => $request->boolean('is_active'),
             'office_windows' => $windows,
-            'toilet_minutes' => $data['toilet_minutes'] ?? null,
+            'idle_threshold_minutes' => $data['inactivity_mode'] === 'custom'
+                ? (int) $data['idle_threshold_minutes']
+                : null,
+            'stop_after_minutes' => $data['inactivity_mode'] === 'custom'
+                ? (int) $data['stop_after_minutes']
+                : null,
+            'asor_namaz_minutes' => $data['break_mode'] === 'custom'
+                ? (int) $data['asor_namaz_minutes']
+                : null,
+            'johor_namaz_minutes' => $data['break_mode'] === 'custom'
+                ? (int) $data['johor_namaz_minutes']
+                : null,
+            'maghrib_namaz_minutes' => $data['break_mode'] === 'custom'
+                ? (int) $data['maghrib_namaz_minutes']
+                : null,
+            'toilet_minutes' => $data['break_mode'] === 'custom'
+                ? (int) $data['toilet_minutes']
+                : null,
         ]);
 
         if (! empty($data['password'])) {

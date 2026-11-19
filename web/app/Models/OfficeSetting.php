@@ -9,8 +9,10 @@ class OfficeSetting extends Model
     protected $fillable = [
         'windows',
         'idle_threshold_minutes',
+        'stop_after_minutes',
         'screenshot_interval_minutes',
         'asor_namaz_minutes',
+        'johor_namaz_minutes',
         'maghrib_namaz_minutes',
         'toilet_minutes',
         'total_time_mode',
@@ -21,8 +23,10 @@ class OfficeSetting extends Model
         return [
             'windows' => 'array',
             'idle_threshold_minutes' => 'integer',
+            'stop_after_minutes' => 'integer',
             'screenshot_interval_minutes' => 'integer',
             'asor_namaz_minutes' => 'integer',
+            'johor_namaz_minutes' => 'integer',
             'maghrib_namaz_minutes' => 'integer',
             'toilet_minutes' => 'integer',
         ];
@@ -46,8 +50,10 @@ class OfficeSetting extends Model
                 ['start' => '14:15', 'end' => '18:30'],
             ]),
             'idle_threshold_minutes' => (int) config('tracker.idle_threshold_minutes', 5),
+            'stop_after_minutes' => (int) config('tracker.stop_after_minutes', 0),
             'screenshot_interval_minutes' => (int) config('tracker.screenshot_interval_minutes', 10),
             'asor_namaz_minutes' => (int) config('tracker.breaks.asor.minutes', 20),
+            'johor_namaz_minutes' => (int) config('tracker.breaks.johor.minutes', 20),
             'maghrib_namaz_minutes' => (int) config('tracker.breaks.maghrib.minutes', 15),
             'toilet_minutes' => (int) config('tracker.breaks.toilet.minutes', 15),
             'total_time_mode' => 'active',

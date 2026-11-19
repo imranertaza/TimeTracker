@@ -80,9 +80,10 @@ class ReportService
 
         $namaz = [
             'asor' => (int) $breaks->where('type', 'asor')->sum('duration_seconds'),
+            'johor' => (int) $breaks->where('type', 'johor')->sum('duration_seconds'),
             'maghrib' => (int) $breaks->where('type', 'maghrib')->sum('duration_seconds'),
         ];
-        $namaz['total'] = $namaz['asor'] + $namaz['maghrib'];
+        $namaz['total'] = $namaz['asor'] + $namaz['johor'] + $namaz['maghrib'];
         $toiletSeconds = (int) $breaks->where('type', 'toilet')->sum('duration_seconds');
 
         $running = $sessions->first(fn (WorkSession $session) => $session->is_running);
@@ -221,9 +222,10 @@ class ReportService
         $breakSeconds = (int) $breaks->sum('duration_seconds');
         $namaz = [
             'asor' => (int) $breaks->where('type', 'asor')->sum('duration_seconds'),
+            'johor' => (int) $breaks->where('type', 'johor')->sum('duration_seconds'),
             'maghrib' => (int) $breaks->where('type', 'maghrib')->sum('duration_seconds'),
         ];
-        $namaz['total'] = $namaz['asor'] + $namaz['maghrib'];
+        $namaz['total'] = $namaz['asor'] + $namaz['johor'] + $namaz['maghrib'];
         $toiletSeconds = (int) $breaks->where('type', 'toilet')->sum('duration_seconds');
 
         return [
