@@ -16,6 +16,7 @@ class OfficeSetting extends Model
         'maghrib_namaz_minutes',
         'toilet_minutes',
         'total_time_mode',
+        'total_time_include_away',
     ];
 
     protected function casts(): array
@@ -29,6 +30,7 @@ class OfficeSetting extends Model
             'johor_namaz_minutes' => 'integer',
             'maghrib_namaz_minutes' => 'integer',
             'toilet_minutes' => 'integer',
+            'total_time_include_away' => 'boolean',
         ];
     }
 
@@ -57,6 +59,7 @@ class OfficeSetting extends Model
             'maghrib_namaz_minutes' => (int) config('tracker.breaks.maghrib.minutes', 15),
             'toilet_minutes' => (int) config('tracker.breaks.toilet.minutes', 15),
             'total_time_mode' => 'active',
+            'total_time_include_away' => false,
         ];
     }
 }

@@ -222,8 +222,10 @@ Response `201`:
     "started_at": "2026-11-09T04:00:00+00:00",
     "ended_at": null,
     "status": "running",
+    "away": false,
     "active_seconds": 0,
     "idle_seconds": 0,
+    "away_seconds": 0,
     "break_seconds": 0
   },
   "schedule": {...}
@@ -242,6 +244,7 @@ Content-Type: application/json
 ```json
 {
   "status": "running",
+  "away": true,
   "activity": [
     {
       "minute_start": "2026-11-09T04:00:00Z",
@@ -249,6 +252,7 @@ Content-Type: application/json
       "clicks": 7,
       "active_seconds": 60,
       "idle_seconds": 0,
+      "away_seconds": 0,
       "is_idle": false
     },
     {
@@ -257,6 +261,7 @@ Content-Type: application/json
       "clicks": 0,
       "active_seconds": 0,
       "idle_seconds": 60,
+      "away_seconds": 0,
       "is_idle": true
     }
   ],
@@ -276,7 +281,11 @@ Content-Type: application/json
 Notes:
 
 - Activity rows are idempotent per `(session, minute_start)`.
-- `active_seconds` and `idle_seconds` are capped at 60.
+- `active_seconds`, `idle_seconds` and `away_seconds` are capped at 60. The three
+  categories are mutually exclusive; `away_seconds` is used while the staff
+  member has enabled **Working away from PC**.
+- `away` is the live away state of the session. The server clears it on stop and
+  when a break starts.
 - Break `type` is `asor`, `johor`, `maghrib` or `toilet`.
 - Break duration is capped at the configured allowance (Asor 1200 seconds, Johor 1200 seconds, Maghrib 900 seconds, toilet 900 seconds by default, or the staff member's override).
 - The server recalculates session totals from all activity and break rows.
@@ -289,8 +298,10 @@ Response:
   "session": {
     "uuid": "...",
     "status": "running",
+    "away": true,
     "active_seconds": 60,
     "idle_seconds": 60,
+    "away_seconds": 0,
     "break_seconds": 1200
   },
   "server_time": "2026-11-09T16:30:00+06:00"

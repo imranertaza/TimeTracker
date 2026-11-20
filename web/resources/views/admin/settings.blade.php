@@ -135,6 +135,14 @@
                     @error('total_time_mode')<div class="errors">{{ $message }}</div>@enderror
                 </div>
 
+                <div class="field check">
+                    <input type="hidden" name="total_time_include_away" value="0">
+                    <input id="total_time_include_away" name="total_time_include_away" type="checkbox" value="1" @checked(old('total_time_include_away', $setting->total_time_include_away))>
+                    <label for="total_time_include_away" style="margin:0;font-weight:500">Include outside-office work time in the monthly total by default</label>
+                    <p class="page-description" style="margin-top:6px">When enabled, the monthly total also adds the time staff recorded with the desktop <strong>Working away from PC</strong> button. You can still accept or exclude it on each monthly report.</p>
+                    @error('total_time_include_away')<div class="errors">{{ $message }}</div>@enderror
+                </div>
+
                 <div class="notice mb-2">
                     <span>◉</span>
                     <span>Desktop apps pick up this change within about 2 seconds and apply it straight away. Staff with a custom office time keep their own windows.</span>

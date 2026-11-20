@@ -25,7 +25,9 @@
         <div class="hero-kicker">Today · Dhaka time</div>
         <h3 class="hero-title">{{ \App\Support\Format::statusLabel($status) }}</h3>
         <p class="hero-subtitle">
-            @if($status === 'running')
+            @if($status === 'running' && $summary['away'])
+                You are working away from this PC. Time keeps counting without keyboard or mouse input.
+            @elseif($status === 'running')
                 The desktop tracker is running. Keep it open during your shift.
             @elseif($status === 'paused')
                 You are currently on a namaz or toilet break.
@@ -43,6 +45,10 @@
                 <div class="hero-stat-value">{{ \App\Support\Format::duration($summary['idle_seconds'], true) }}</div>
             </div>
             <div>
+                <div class="hero-stat-label">Outside office</div>
+                <div class="hero-stat-value">{{ \App\Support\Format::duration($summary['away_seconds'], true) }}</div>
+            </div>
+            <div>
                 <div class="hero-stat-label">Namaz</div>
                 <div class="hero-stat-value">{{ \App\Support\Format::duration($summary['namaz']['total'], true) }}</div>
             </div>
@@ -57,7 +63,12 @@
         </div>
     </section>
 
-    <div class="grid grid-6 mb-3">
+    <div class="grid grid-7 mb-3">
+        <div class="card stat-card tone-blue">
+            <div class="stat-label">Outside office</div>
+            <div class="stat-value">{{ \App\Support\Format::duration($summary['away_seconds']) }}</div>
+            <div class="stat-note">Away from this PC</div>
+        </div>
         <div class="card stat-card tone-green">
             <div class="stat-label">Keyboard presses</div>
             <div class="stat-value">{{ number_format($summary['keystrokes']) }}</div>
@@ -179,6 +190,7 @@
                     <th>Status</th>
                     <th>Active</th>
                     <th>Idle</th>
+                    <th>Outside office</th>
                     <th>Breaks</th>
                     <th>Shots</th>
                     <th></th>
@@ -190,15 +202,19 @@
                         <td class="num">{{ \App\Support\Format::timeWithSeconds($session->started_at) }}</td>
                         <td class="num">{{ \App\Support\Format::timeWithSeconds($session->ended_at) }}</td>
                         <td class="num muted">{{ \App\Support\Format::elapsed($session->started_at, $session->ended_at) }}</td>
-                        <td><span class="badge {{ \App\Support\Format::statusClass($session->status) }}">{{ \App\Support\Format::statusLabel($session->status) }}</span></td>
+                        <td>
+                            <span class="badge {{ \App\Support\Format::statusClass($session->status) }}">{{ \App\Support\Format::statusLabel($session->status) }}</span>
+                            @if($session->away && $session->is_running)<span class="badge badge-warning">Away</span>@endif
+                        </td>
                         <td class="num strong">{{ \App\Support\Format::duration($session->active_seconds) }}</td>
                         <td class="num tone-orange">{{ \App\Support\Format::duration($session->idle_seconds) }}</td>
+                        <td class="num tone-blue">{{ \App\Support\Format::duration($session->away_seconds) }}</td>
                         <td class="num tone-purple">{{ \App\Support\Format::duration($session->break_seconds) }}</td>
                         <td class="num">{{ $session->screenshots_count }}</td>
                         <td class="text-right"><a class="button button-secondary button-sm" href="{{ route('sessions.show', $session) }}">Details</a></td>
                     </tr>
                 @empty
-                        <tr><td colspan="9"><div class="empty"><div class="empty-icon">◷</div>No sessions for this date.</div></td></tr>
+                        <tr><td colspan="10"><div class="empty"><div class="empty-icon">◷</div>No sessions for this date.</div></td></tr>
 
                 @endforelse
                 </tbody>

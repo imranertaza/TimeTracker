@@ -49,7 +49,7 @@ class BreakController extends Controller
                     ])->save();
                 });
 
-            $session->forceFill(['status' => 'paused'])->save();
+            $session->forceFill(['status' => 'paused', 'away' => false])->save();
 
             $existing = BreakSession::query()->where('uuid', $data['uuid'])->first();
             if ($existing && $existing->user_id !== $user->id) {
@@ -111,6 +111,7 @@ class BreakController extends Controller
                     $session->forceFill([
                         'status' => 'stopped',
                         'ended_at' => $endedAt,
+                        'away' => false,
                     ])->save();
                 } else {
                     $session->forceFill([

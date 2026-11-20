@@ -35,7 +35,9 @@ class Database:
                     status TEXT NOT NULL DEFAULT 'running',
                     active_seconds INTEGER NOT NULL DEFAULT 0,
                     idle_seconds INTEGER NOT NULL DEFAULT 0,
+                    away_seconds INTEGER NOT NULL DEFAULT 0,
                     break_seconds INTEGER NOT NULL DEFAULT 0,
+                    away INTEGER NOT NULL DEFAULT 0,
                     device_name TEXT,
                     remote_created INTEGER NOT NULL DEFAULT 0,
                     stop_synced INTEGER NOT NULL DEFAULT 0,
@@ -51,6 +53,7 @@ class Database:
                     clicks INTEGER NOT NULL DEFAULT 0,
                     active_seconds INTEGER NOT NULL DEFAULT 0,
                     idle_seconds INTEGER NOT NULL DEFAULT 0,
+                    away_seconds INTEGER NOT NULL DEFAULT 0,
                     is_idle INTEGER NOT NULL DEFAULT 0,
                     synced INTEGER NOT NULL DEFAULT 0,
                     updated_at TEXT NOT NULL,
@@ -84,6 +87,16 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_screenshots_session ON screenshots(session_uuid, taken_at);
                 """
             )
+            # Databases created by an older version need the away-mode columns.
+            self._ensure_column("sessions", "away", "INTEGER NOT NULL DEFAULT 0")
+            self._ensure_column("sessions", "away_seconds", "INTEGER NOT NULL DEFAULT 0")
+            self._ensure_column("activity_minutes", "away_seconds", "INTEGER NOT NULL DEFAULT 0")
+
+    def _ensure_column(self, table: str, column: str, definition: str) -> None:
+        rows = self.connection.execute(f"PRAGMA table_info({table})").fetchall()
+        if any(str(row["name"]) == column for row in rows):
+            return
+        self.connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
     # ------------------------------------------------------------------ settings
     def get_setting(self, key: str, default: str | None = None) -> str | None:
@@ -130,7 +143,9 @@ class Database:
             "status",
             "active_seconds",
             "idle_seconds",
+            "away_seconds",
             "break_seconds",
+            "away",
             "remote_created",
             "stop_synced",
         }
@@ -177,13 +192,19 @@ class Database:
                 SELECT
                     COALESCE(SUM(active_seconds), 0) AS active_seconds,
                     COALESCE(SUM(idle_seconds), 0) AS idle_seconds,
+                    COALESCE(SUM(away_seconds), 0) AS away_seconds,
                     COALESCE(SUM(break_seconds), 0) AS break_seconds
                 FROM sessions
                 WHERE started_at >= ? AND started_at < ?
                 """,
                 (iso_utc(start), iso_utc(end)),
             ).fetchone()
-        return dict(row) if row else {"active_seconds": 0, "idle_seconds": 0, "break_seconds": 0}
+        return dict(row) if row else {
+            "active_seconds": 0,
+            "idle_seconds": 0,
+            "away_seconds": 0,
+            "break_seconds": 0,
+        }
 
     def today_break_totals(self, local_day: date) -> dict[str, int]:
         """Total break seconds per type for sessions that started on a local day."""
@@ -226,6 +247,7 @@ class Database:
         active_seconds: int,
         idle_seconds: int,
         is_idle: bool,
+        away_seconds: int = 0,
     ) -> None:
         now = iso_utc(utc_now())
         with self._lock, self.connection:
@@ -233,13 +255,14 @@ class Database:
                 """
                 INSERT INTO activity_minutes(
                     session_uuid, minute_start, keystrokes, clicks, active_seconds,
-                    idle_seconds, is_idle, synced, updated_at
-                ) VALUES(?, ?, ?, ?, ?, ?, ?, 0, ?)
+                    idle_seconds, away_seconds, is_idle, synced, updated_at
+                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
                 ON CONFLICT(session_uuid, minute_start) DO UPDATE SET
                     keystrokes = excluded.keystrokes,
                     clicks = excluded.clicks,
                     active_seconds = excluded.active_seconds,
                     idle_seconds = excluded.idle_seconds,
+                    away_seconds = excluded.away_seconds,
                     is_idle = excluded.is_idle,
                     synced = 0,
                     updated_at = excluded.updated_at
@@ -251,6 +274,7 @@ class Database:
                     max(0, int(clicks)),
                     min(60, max(0, int(active_seconds))),
                     min(60, max(0, int(idle_seconds))),
+                    min(60, max(0, int(away_seconds))),
                     1 if is_idle else 0,
                     now,
                 ),

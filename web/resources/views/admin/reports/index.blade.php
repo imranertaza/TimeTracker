@@ -7,7 +7,7 @@
     <div class="page-head">
         <div>
             <h2 class="page-title">Daily time report</h2>
-            <p class="page-description">Active, idle, namaz and toilet break totals calculated from every synced desktop minute.</p>
+            <p class="page-description">Active, idle, outside-office, namaz and toilet break totals calculated from every synced desktop minute.</p>
         </div>
         <div class="toolbar">
             <a class="button button-secondary" href="{{ route('admin.reports.monthly', ['month' => $date->format('Y-m')]) }}">Monthly report</a>
@@ -38,7 +38,7 @@
         </div>
     </div>
 
-    <div class="grid grid-6 mb-3">
+    <div class="grid grid-7 mb-3">
         <div class="card stat-card tone-green">
             <div class="stat-label">Exact working</div>
             <div class="stat-value">{{ \App\Support\Format::duration($totals['active_seconds']) }}</div>
@@ -48,6 +48,11 @@
             <div class="stat-label">Idle</div>
             <div class="stat-value">{{ \App\Support\Format::duration($totals['idle_seconds']) }}</div>
             <div class="stat-note">From the idle timer</div>
+        </div>
+        <div class="card stat-card tone-blue">
+            <div class="stat-label">Outside office</div>
+            <div class="stat-value">{{ \App\Support\Format::duration($totals['away_seconds']) }}</div>
+            <div class="stat-note">Away from the PC</div>
         </div>
         <div class="card stat-card tone-purple">
             <div class="stat-label">Namaz total</div>
@@ -86,6 +91,7 @@
                     <th>Status</th>
                     <th>Exact working</th>
                     <th>Idle</th>
+                    <th>Outside office</th>
                     <th>Tracked</th>
                     <th>Asor</th>
                     <th>Johor</th>
@@ -109,6 +115,7 @@
                         <td><span class="badge {{ \App\Support\Format::statusClass($row['status']) }}">{{ \App\Support\Format::statusLabel($row['status']) }}</span></td>
                         <td class="num strong">{{ \App\Support\Format::duration($row['active_seconds']) }}</td>
                         <td class="num tone-orange">{{ \App\Support\Format::duration($row['idle_seconds']) }}</td>
+                        <td class="num tone-blue">{{ \App\Support\Format::duration($row['away_seconds']) }}</td>
                         <td class="num">{{ \App\Support\Format::duration($row['tracked_seconds']) }}</td>
                         <td class="num tone-purple">{{ \App\Support\Format::duration($row['namaz']['asor']) }}</td>
                         <td class="num tone-purple">{{ \App\Support\Format::duration($row['namaz']['johor']) }}</td>
@@ -122,7 +129,7 @@
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="13"><div class="empty">No staff data for this date.</div></td></tr>
+                    <tr><td colspan="14"><div class="empty">No staff data for this date.</div></td></tr>
                 @endforelse
                 </tbody>
             </table>
@@ -139,23 +146,29 @@
             </div>
             <div class="table-wrap">
                 <table>
-                    <thead><tr><th>Started</th><th>Ended</th><th>Elapsed</th><th>Status</th><th>Exact working</th><th>Idle</th><th>Tracked</th><th>Break</th><th>Shots</th><th></th></tr></thead>
+                    <thead><tr><th>Started</th><th>Ended</th><th>Elapsed</th><th>Status</th><th>Exact working</th><th>Idle</th><th>Outside office</th><th>Tracked</th><th>Break</th><th>Shots</th><th></th></tr></thead>
                     <tbody>
                     @forelse($summary['sessions'] as $session)
                         <tr>
                             <td class="num">{{ \App\Support\Format::timeWithSeconds($session->started_at) }}</td>
                             <td class="num">{{ \App\Support\Format::timeWithSeconds($session->ended_at) }}</td>
                             <td class="num muted">{{ \App\Support\Format::elapsed($session->started_at, $session->ended_at) }}</td>
-                            <td><span class="badge {{ \App\Support\Format::statusClass($session->status) }}">{{ \App\Support\Format::statusLabel($session->status) }}</span></td>
+                            <td>
+                                <span class="badge {{ \App\Support\Format::statusClass($session->status) }}">{{ \App\Support\Format::statusLabel($session->status) }}</span>
+                                @if($session->away && $session->is_running)
+                                    <span class="badge badge-warning">Away</span>
+                                @endif
+                            </td>
                             <td class="num">{{ \App\Support\Format::duration($session->active_seconds) }}</td>
                             <td class="num tone-orange">{{ \App\Support\Format::duration($session->idle_seconds) }}</td>
+                            <td class="num tone-blue">{{ \App\Support\Format::duration($session->away_seconds) }}</td>
                             <td class="num">{{ \App\Support\Format::duration($session->tracked_seconds) }}</td>
                             <td class="num tone-purple">{{ \App\Support\Format::duration($session->break_seconds) }}</td>
                             <td class="num">{{ $session->screenshots_count }}</td>
                             <td class="text-right"><a class="button button-secondary button-sm" href="{{ route('sessions.show', $session) }}">Details</a></td>
                         </tr>
                     @empty
-                        <tr><td colspan="10"><div class="empty">No sessions recorded.</div></td></tr>
+                        <tr><td colspan="11"><div class="empty">No sessions recorded.</div></td></tr>
                     @endforelse
                     </tbody>
                 </table>

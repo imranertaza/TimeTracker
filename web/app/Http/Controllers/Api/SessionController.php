@@ -43,6 +43,7 @@ class SessionController extends Controller
                     $open->forceFill([
                         'status' => 'stopped',
                         'ended_at' => $startedAt,
+                        'away' => false,
                     ])->save();
                     $open->breaks()->whereNull('ended_at')->update([
                         'ended_at' => $startedAt,
@@ -62,6 +63,7 @@ class SessionController extends Controller
                     'started_at' => $startedAt,
                     'ended_at' => null,
                     'status' => 'running',
+                    'away' => false,
                     'device_name' => $data['device_name'] ?? null,
                     'ip_address' => request()->ip(),
                 ],
@@ -79,12 +81,14 @@ class SessionController extends Controller
     {
         $data = $request->validate([
             'status' => ['nullable', 'in:running,paused,stopped'],
+            'away' => ['nullable', 'boolean'],
             'activity' => ['nullable', 'array', 'max:3000'],
             'activity.*.minute_start' => ['required_with:activity', 'date'],
             'activity.*.keystrokes' => ['nullable', 'integer', 'min:0', 'max:1000000'],
             'activity.*.clicks' => ['nullable', 'integer', 'min:0', 'max:1000000'],
             'activity.*.active_seconds' => ['nullable', 'integer', 'min:0', 'max:60'],
             'activity.*.idle_seconds' => ['nullable', 'integer', 'min:0', 'max:60'],
+            'activity.*.away_seconds' => ['nullable', 'integer', 'min:0', 'max:60'],
             'activity.*.is_idle' => ['nullable', 'boolean'],
             'breaks' => ['nullable', 'array', 'max:50'],
             'breaks.*.uuid' => ['required_with:breaks', 'uuid'],
@@ -111,6 +115,7 @@ class SessionController extends Controller
                         'clicks' => (int) ($row['clicks'] ?? 0),
                         'active_seconds' => min(60, (int) ($row['active_seconds'] ?? 0)),
                         'idle_seconds' => min(60, (int) ($row['idle_seconds'] ?? 0)),
+                        'away_seconds' => min(60, (int) ($row['away_seconds'] ?? 0)),
                         'is_idle' => (bool) ($row['is_idle'] ?? false),
                     ],
                 );
@@ -145,8 +150,24 @@ class SessionController extends Controller
 
             $this->recalculate($session);
 
-            if (! empty($data['status']) && $session->status !== 'stopped') {
-                $session->forceFill(['status' => $data['status']])->save();
+            if ($session->status !== 'stopped') {
+                $changes = [];
+
+                if (! empty($data['status'])) {
+                    $changes['status'] = $data['status'];
+                }
+
+                if (array_key_exists('away', $data)) {
+                    $changes['away'] = (bool) $data['away'];
+                }
+
+                if (($changes['status'] ?? null) === 'stopped') {
+                    $changes['away'] = false;
+                }
+
+                if ($changes !== []) {
+                    $session->forceFill($changes)->save();
+                }
             }
         });
 
@@ -183,6 +204,7 @@ class SessionController extends Controller
             $session->forceFill([
                 'status' => 'stopped',
                 'ended_at' => $endedAt,
+                'away' => false,
             ])->save();
 
             $this->recalculate($session);
@@ -221,11 +243,13 @@ class SessionController extends Controller
     {
         $active = (int) $session->activityMinutes()->sum('active_seconds');
         $idle = (int) $session->activityMinutes()->sum('idle_seconds');
+        $away = (int) $session->activityMinutes()->sum('away_seconds');
         $breaks = (int) $session->breaks()->sum('duration_seconds');
 
         $session->forceFill([
             'active_seconds' => $active,
             'idle_seconds' => $idle,
+            'away_seconds' => $away,
             'break_seconds' => $breaks,
         ])->save();
     }
@@ -240,8 +264,10 @@ class SessionController extends Controller
             'started_at' => $session->started_at?->toIso8601String(),
             'ended_at' => $session->ended_at?->toIso8601String(),
             'status' => $session->status,
+            'away' => (bool) $session->away,
             'active_seconds' => (int) ($session->active_seconds ?? 0),
             'idle_seconds' => (int) ($session->idle_seconds ?? 0),
+            'away_seconds' => (int) ($session->away_seconds ?? 0),
             'break_seconds' => (int) ($session->break_seconds ?? 0),
         ];
     }

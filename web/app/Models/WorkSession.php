@@ -17,8 +17,10 @@ class WorkSession extends Model
         'started_at',
         'ended_at',
         'status',
+        'away',
         'active_seconds',
         'idle_seconds',
+        'away_seconds',
         'break_seconds',
         'device_name',
         'ip_address',
@@ -29,6 +31,7 @@ class WorkSession extends Model
         return [
             'started_at' => 'datetime',
             'ended_at' => 'datetime',
+            'away' => 'boolean',
         ];
     }
 
@@ -54,7 +57,7 @@ class WorkSession extends Model
 
     public function getTrackedSecondsAttribute(): int
     {
-        return $this->active_seconds + $this->idle_seconds;
+        return $this->active_seconds + $this->idle_seconds + $this->away_seconds;
     }
 
     public function getIsRunningAttribute(): bool

@@ -84,6 +84,96 @@ class TimeTrackingTest extends TestCase
         $this->assertSame('stopped', $session->fresh()->status);
     }
 
+    public function test_desktop_api_syncs_away_time_and_recalculates_totals(): void
+    {
+        $this->seed();
+        $this->freezeAt('2026-11-09 10:00:00');
+
+        $login = $this->postJson('/api/v1/auth/login', [
+            'email' => 'staff@officetracker.test',
+            'password' => 'Staff@12345',
+            'device_name' => 'Test PC',
+        ])->assertOk()->json();
+
+        $token = $login['token'];
+        $uuid = (string) Str::uuid();
+
+        $this->withToken($token)->postJson('/api/v1/sessions/start', [
+            'uuid' => $uuid,
+            'started_at' => now()->toIso8601String(),
+            'device_name' => 'Test PC',
+        ])->assertCreated()->assertJsonPath('session.away', false);
+
+        $minute = now()->utc()->startOfMinute()->toIso8601String();
+        $response = $this->withToken($token)->postJson("/api/v1/sessions/{$uuid}/sync", [
+            'status' => 'running',
+            'away' => true,
+            'activity' => [[
+                'minute_start' => $minute,
+                'keystrokes' => 0,
+                'clicks' => 0,
+                'active_seconds' => 0,
+                'idle_seconds' => 0,
+                'away_seconds' => 60,
+                'is_idle' => false,
+            ]],
+            'breaks' => [],
+        ])->assertOk()->assertJsonPath('session.away', true)->json();
+
+        $this->assertSame(60, $response['session']['away_seconds']);
+
+        $session = WorkSession::query()->where('uuid', $uuid)->firstOrFail();
+        $this->assertTrue($session->away);
+        $this->assertSame(60, $session->away_seconds);
+        $this->assertSame(60, $session->activityMinutes()->firstOrFail()->away_seconds);
+
+        $this->withToken($token)->postJson("/api/v1/sessions/{$uuid}/sync", [
+            'status' => 'stopped',
+            'away' => true,
+            'activity' => [],
+            'breaks' => [],
+        ])->assertOk();
+
+        $session->refresh();
+        $this->assertFalse($session->away);
+        $this->assertSame(60, (int) $session->away_seconds);
+    }
+
+    public function test_starting_a_break_clears_the_live_away_state(): void
+    {
+        $this->seed();
+        $this->freezeAt('2026-11-09 10:00:00');
+
+        $token = $this->postJson('/api/v1/auth/login', [
+            'email' => 'staff@officetracker.test',
+            'password' => 'Staff@12345',
+        ])->json('token');
+
+        $sessionUuid = (string) Str::uuid();
+        $breakUuid = (string) Str::uuid();
+
+        $this->withToken($token)->postJson('/api/v1/sessions/start', [
+            'uuid' => $sessionUuid,
+            'started_at' => now()->utc()->toIso8601String(),
+        ])->assertCreated();
+
+        $this->withToken($token)->postJson("/api/v1/sessions/{$sessionUuid}/sync", [
+            'status' => 'running',
+            'away' => true,
+            'activity' => [],
+            'breaks' => [],
+        ])->assertOk();
+
+        $this->withToken($token)->postJson('/api/v1/breaks/start', [
+            'uuid' => $breakUuid,
+            'session_uuid' => $sessionUuid,
+            'type' => 'toilet',
+            'started_at' => now()->utc()->toIso8601String(),
+        ])->assertCreated();
+
+        $this->assertFalse(WorkSession::query()->where('uuid', $sessionUuid)->firstOrFail()->away);
+    }
+
     public function test_toilet_break_is_tracked_and_overrunning_it_stops_the_session(): void
     {
         $this->seed();

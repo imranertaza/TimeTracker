@@ -33,8 +33,14 @@ class ReportService
         return array_key_exists($mode, self::TOTAL_MODES) ? $mode : 'active';
     }
 
-    public static function combinedTotal(int $activeSeconds, int $idleSeconds, int $namazSeconds, ?string $mode = 'active'): int
-    {
+    public static function combinedTotal(
+        int $activeSeconds,
+        int $idleSeconds,
+        int $namazSeconds,
+        ?string $mode = 'active',
+        int $awaySeconds = 0,
+        bool $includeAway = false,
+    ): int {
         $mode = self::normaliseMode($mode);
         $total = $activeSeconds;
 
@@ -44,6 +50,10 @@ class ReportService
 
         if (str_contains($mode, 'namaz')) {
             $total += $namazSeconds;
+        }
+
+        if ($includeAway) {
+            $total += $awaySeconds;
         }
 
         return $total;
@@ -76,6 +86,7 @@ class ReportService
 
         $activeSeconds = (int) $activity->sum('active_seconds');
         $idleSeconds = (int) $activity->sum('idle_seconds');
+        $awaySeconds = (int) $activity->sum('away_seconds');
         $breakSeconds = (int) $breaks->sum('duration_seconds');
 
         $namaz = [
@@ -97,13 +108,15 @@ class ReportService
             'screenshots' => $sessions->sum('screenshots_count'),
             'active_seconds' => $activeSeconds,
             'idle_seconds' => $idleSeconds,
-            'tracked_seconds' => $activeSeconds + $idleSeconds,
+            'away_seconds' => $awaySeconds,
+            'tracked_seconds' => $activeSeconds + $idleSeconds + $awaySeconds,
             'break_seconds' => $breakSeconds,
             'keystrokes' => (int) $activity->sum('keystrokes'),
             'clicks' => (int) $activity->sum('clicks'),
             'namaz' => $namaz,
             'toilet_seconds' => $toiletSeconds,
             'status' => $running ? $running->status : ($sessions->isEmpty() ? 'not_started' : 'stopped'),
+            'away' => (bool) ($running?->away),
             'last_seen_at' => $user->last_seen_at,
         ];
     }
@@ -132,6 +145,7 @@ class ReportService
             'staff' => $team->count(),
             'active_seconds' => (int) $team->sum('active_seconds'),
             'idle_seconds' => (int) $team->sum('idle_seconds'),
+            'away_seconds' => (int) $team->sum('away_seconds'),
             'tracked_seconds' => (int) $team->sum('tracked_seconds'),
             'break_seconds' => (int) $team->sum('break_seconds'),
             'namaz_seconds' => (int) $team->sum(fn (array $row) => $row['namaz']['total']),
@@ -152,8 +166,12 @@ class ReportService
      *
      * @return array<string, mixed>
      */
-    public function monthly(User $user, CarbonInterface|string|null $month = null, ?string $mode = 'active'): array
-    {
+    public function monthly(
+        User $user,
+        CarbonInterface|string|null $month = null,
+        ?string $mode = 'active',
+        bool $includeAway = false,
+    ): array {
         $mode = self::normaliseMode($mode);
         $monthStart = $this->localMonth($month);
         $nextMonth = $monthStart->addMonth();
@@ -180,6 +198,7 @@ class ReportService
                 'date' => $day,
                 'active_seconds' => 0,
                 'idle_seconds' => 0,
+                'away_seconds' => 0,
                 'namaz_seconds' => 0,
                 'toilet_seconds' => 0,
                 'total_seconds' => 0,
@@ -193,6 +212,7 @@ class ReportService
             }
             $days[$key]['active_seconds'] += (int) $row->active_seconds;
             $days[$key]['idle_seconds'] += (int) $row->idle_seconds;
+            $days[$key]['away_seconds'] += (int) $row->away_seconds;
         }
 
         foreach ($breaks as $row) {
@@ -214,11 +234,14 @@ class ReportService
                 $day['idle_seconds'],
                 $day['namaz_seconds'],
                 $mode,
+                $day['away_seconds'],
+                $includeAway,
             );
         }
 
         $activeSeconds = (int) $activity->sum('active_seconds');
         $idleSeconds = (int) $activity->sum('idle_seconds');
+        $awaySeconds = (int) $activity->sum('away_seconds');
         $breakSeconds = (int) $breaks->sum('duration_seconds');
         $namaz = [
             'asor' => (int) $breaks->where('type', 'asor')->sum('duration_seconds'),
@@ -236,28 +259,40 @@ class ReportService
             'screenshots' => $sessions->sum('screenshots_count'),
             'active_seconds' => $activeSeconds,
             'idle_seconds' => $idleSeconds,
+            'away_seconds' => $awaySeconds,
             'break_seconds' => $breakSeconds,
             'keystrokes' => (int) $activity->sum('keystrokes'),
             'clicks' => (int) $activity->sum('clicks'),
             'namaz' => $namaz,
             'toilet_seconds' => $toiletSeconds,
-            'total_seconds' => self::combinedTotal($activeSeconds, $idleSeconds, $namaz['total'], $mode),
+            'total_seconds' => self::combinedTotal(
+                $activeSeconds,
+                $idleSeconds,
+                $namaz['total'],
+                $mode,
+                $awaySeconds,
+                $includeAway,
+            ),
             'mode' => $mode,
+            'include_away' => $includeAway,
         ];
     }
 
     /**
      * @return Collection<int, array<string, mixed>>
      */
-    public function teamMonthly(CarbonInterface|string|null $month = null, ?string $mode = 'active'): Collection
-    {
+    public function teamMonthly(
+        CarbonInterface|string|null $month = null,
+        ?string $mode = 'active',
+        bool $includeAway = false,
+    ): Collection {
         $month = $this->localMonth($month);
 
         return User::query()
             ->where('role', 'staff')
             ->orderBy('name')
             ->get()
-            ->map(fn (User $user) => $this->monthly($user, $month, $mode));
+            ->map(fn (User $user) => $this->monthly($user, $month, $mode, $includeAway));
     }
 
     /**
@@ -269,6 +304,7 @@ class ReportService
             'staff' => $team->count(),
             'active_seconds' => (int) $team->sum('active_seconds'),
             'idle_seconds' => (int) $team->sum('idle_seconds'),
+            'away_seconds' => (int) $team->sum('away_seconds'),
             'break_seconds' => (int) $team->sum('break_seconds'),
             'namaz_seconds' => (int) $team->sum(fn (array $row) => $row['namaz']['total']),
             'toilet_seconds' => (int) $team->sum('toilet_seconds'),
@@ -295,6 +331,7 @@ class ReportService
                 'label' => $day->format('D'),
                 'active_seconds' => $summary['active_seconds'],
                 'idle_seconds' => $summary['idle_seconds'],
+                'away_seconds' => $summary['away_seconds'],
                 'namaz_seconds' => $summary['namaz']['total'],
                 'toilet_seconds' => $summary['toilet_seconds'],
             ];

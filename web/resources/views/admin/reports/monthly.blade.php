@@ -7,7 +7,7 @@
     <div class="page-head">
         <div>
             <h2 class="page-title">Monthly time report</h2>
-            <p class="page-description">Exact working, idle, namaz and toilet break time for every staff member. Choose the formula used to generate the monthly total.</p>
+            <p class="page-description">Exact working, idle, outside-office, namaz and toilet break time for every staff member. Choose the formula used to generate the monthly total and decide whether outside-office time is accepted.</p>
         </div>
         <div class="toolbar">
             <a class="button button-secondary" href="{{ route('admin.reports.index', ['date' => $month->format('Y-m-d')]) }}">Daily report</a>
@@ -39,6 +39,14 @@
                         @endforeach
                     </select>
                 </div>
+                <div>
+                    <label class="tiny muted strong" for="include_away" style="display:block;margin-bottom:5px">Outside-office time</label>
+                    <label class="field check" style="margin:0;padding:9px 10px;border:1px solid var(--border);border-radius:10px">
+                        <input type="hidden" name="include_away" value="0">
+                        <input id="include_away" name="include_away" type="checkbox" value="1" @checked($includeAway)>
+                        <span style="font-weight:500">Accept and add it to the total</span>
+                    </label>
+                </div>
                 <div style="align-self:flex-end">
                     <button class="button button-sm" type="submit">Generate monthly report</button>
                 </div>
@@ -46,7 +54,7 @@
         </div>
     </div>
 
-    <div class="grid grid-6 mb-3">
+    <div class="grid grid-7 mb-3">
         <div class="card stat-card tone-green">
             <div class="stat-label">Exact working</div>
             <div class="stat-value">{{ \App\Support\Format::duration($totals['active_seconds']) }}</div>
@@ -56,6 +64,11 @@
             <div class="stat-label">Idle</div>
             <div class="stat-value">{{ \App\Support\Format::duration($totals['idle_seconds']) }}</div>
             <div class="stat-note">From the idle timer</div>
+        </div>
+        <div class="card stat-card tone-blue">
+            <div class="stat-label">Outside office</div>
+            <div class="stat-value">{{ \App\Support\Format::duration($totals['away_seconds']) }}</div>
+            <div class="stat-note">{{ $includeAway ? 'Accepted in the total' : 'Not added to the total' }}</div>
         </div>
         <div class="card stat-card tone-purple">
             <div class="stat-label">Namaz total</div>
@@ -70,7 +83,7 @@
         <div class="card stat-card tone-blue">
             <div class="stat-label">Generated total</div>
             <div class="stat-value">{{ \App\Support\Format::duration($totals['total_seconds']) }}</div>
-            <div class="stat-note">{{ $modes[$mode] }}</div>
+            <div class="stat-note">{{ $modes[$mode] }}{{ $includeAway ? ' + outside office' : '' }}</div>
         </div>
         <div class="card stat-card tone-gray">
             <div class="stat-label">Screenshots</div>
@@ -83,7 +96,7 @@
         <div class="card-head">
             <div>
                 <h3 class="card-title">{{ $selectedUser ? $selectedUser->name : 'All staff' }} · {{ $month->format('F Y') }}</h3>
-                <div class="card-subtitle">Total formula: {{ $modes[$mode] }}</div>
+                <div class="card-subtitle">Total formula: {{ $modes[$mode] }}{{ $includeAway ? ' + outside office time' : '' }}</div>
             </div>
         </div>
         <div class="table-wrap">
@@ -93,12 +106,13 @@
                     <th>Staff</th>
                     <th>Exact working</th>
                     <th>Idle</th>
+                    <th>Outside office</th>
                     <th>Asor</th>
                     <th>Johor</th>
                     <th>Maghrib</th>
                     <th>Namaz total</th>
                     <th>Toilet</th>
-                    <th>Total ({{ $modes[$mode] }})</th>
+                    <th>Total ({{ $modes[$mode] }}{{ $includeAway ? ' + outside office' : '' }})</th>
                     <th>Keys / clicks</th>
                     <th>Shots</th>
                     <th></th>
@@ -115,6 +129,7 @@
                         </td>
                         <td class="num strong">{{ \App\Support\Format::duration($row['active_seconds']) }}</td>
                         <td class="num tone-orange">{{ \App\Support\Format::duration($row['idle_seconds']) }}</td>
+                        <td class="num tone-blue">{{ \App\Support\Format::duration($row['away_seconds']) }}</td>
                         <td class="num tone-purple">{{ \App\Support\Format::duration($row['namaz']['asor']) }}</td>
                         <td class="num tone-purple">{{ \App\Support\Format::duration($row['namaz']['johor']) }}</td>
                         <td class="num tone-purple">{{ \App\Support\Format::duration($row['namaz']['maghrib']) }}</td>
@@ -124,11 +139,11 @@
                         <td class="num small">{{ number_format($row['keystrokes']) }} / {{ number_format($row['clicks']) }}</td>
                         <td class="num">{{ $row['screenshots'] }}</td>
                         <td class="text-right">
-                            <a class="button button-secondary button-sm" href="{{ route('admin.reports.monthly', ['month' => $month->format('Y-m'), 'user_id' => $row['user']->id, 'mode' => $mode]) }}">View</a>
+                            <a class="button button-secondary button-sm" href="{{ route('admin.reports.monthly', ['month' => $month->format('Y-m'), 'user_id' => $row['user']->id, 'mode' => $mode, 'include_away' => $includeAway ? 1 : 0]) }}">View</a>
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="12"><div class="empty">No staff accounts yet.</div></td></tr>
+                    <tr><td colspan="13"><div class="empty">No staff accounts yet.</div></td></tr>
                 @endforelse
                 </tbody>
             </table>
@@ -140,18 +155,19 @@
             <div class="card-head">
                 <div>
                     <h3 class="card-title">Daily breakdown · {{ $selectedUser->name }}</h3>
-                    <div class="card-subtitle">{{ $month->format('F Y') }} · {{ $modes[$mode] }}</div>
+                    <div class="card-subtitle">{{ $month->format('F Y') }} · {{ $modes[$mode] }}{{ $includeAway ? ' + outside office time' : '' }}</div>
                 </div>
             </div>
             <div class="table-wrap">
                 <table>
-                    <thead><tr><th>Date</th><th>Exact working</th><th>Idle</th><th>Namaz</th><th>Toilet</th><th>Total</th></tr></thead>
+                    <thead><tr><th>Date</th><th>Exact working</th><th>Idle</th><th>Outside office</th><th>Namaz</th><th>Toilet</th><th>Total</th></tr></thead>
                     <tbody>
                     @foreach($summary['days'] as $day)
                         <tr>
                             <td class="num">{{ $day['date']->format('d M Y') }}</td>
                             <td class="num strong">{{ \App\Support\Format::duration($day['active_seconds']) }}</td>
                             <td class="num tone-orange">{{ \App\Support\Format::duration($day['idle_seconds']) }}</td>
+                            <td class="num tone-blue">{{ \App\Support\Format::duration($day['away_seconds']) }}</td>
                             <td class="num tone-purple">{{ \App\Support\Format::duration($day['namaz_seconds']) }}</td>
                             <td class="num tone-blue">{{ \App\Support\Format::duration($day['toilet_seconds']) }}</td>
                             <td class="num strong">{{ \App\Support\Format::duration($day['total_seconds']) }}</td>

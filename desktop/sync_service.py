@@ -122,6 +122,7 @@ class SyncService:
                 "clicks": item["clicks"],
                 "active_seconds": item["active_seconds"],
                 "idle_seconds": item["idle_seconds"],
+                "away_seconds": item["away_seconds"],
                 "is_idle": bool(item["is_idle"]),
             }
             for item in activity_rows
@@ -139,7 +140,13 @@ class SyncService:
         ]
 
         if activity_payload or break_payload or row["status"] == "stopped":
-            api.sync_session(session_uuid, row["status"], activity_payload, break_payload)
+            api.sync_session(
+                session_uuid,
+                row["status"],
+                activity_payload,
+                break_payload,
+                away=bool(row["away"]),
+            )
             self.db.mark_activity_synced([item["id"] for item in activity_rows])
             self.db.mark_breaks_synced([item["uuid"] for item in break_rows])
 

@@ -46,7 +46,7 @@
             <a class="button button-secondary button-sm" href="{{ route('dashboard', ['date' => $date->format('Y-m-d')]) }}">Open timesheet</a>
         </div>
         <div class="card-pad">
-            <div class="grid grid-5">
+            <div class="grid grid-6">
                 <div class="card stat-card tone-green">
                     <div class="stat-label">Exact working</div>
                     <div class="stat-value">{{ \App\Support\Format::duration($summary['active_seconds']) }}</div>
@@ -56,6 +56,11 @@
                     <div class="stat-label">Idle</div>
                     <div class="stat-value">{{ \App\Support\Format::duration($summary['idle_seconds']) }}</div>
                     <div class="stat-note">From the idle timer</div>
+                </div>
+                <div class="card stat-card tone-blue">
+                    <div class="stat-label">Outside office</div>
+                    <div class="stat-value">{{ \App\Support\Format::duration($summary['away_seconds']) }}</div>
+                    <div class="stat-note">Working away from this PC</div>
                 </div>
                 <div class="card stat-card tone-purple">
                     <div class="stat-label">Namaz break</div>
@@ -76,22 +81,26 @@
         </div>
         <div class="table-wrap">
             <table>
-                <thead><tr><th>Started</th><th>Ended</th><th>Elapsed</th><th>Status</th><th>Exact working</th><th>Idle</th><th>Breaks</th><th>Shots</th><th></th></tr></thead>
+                <thead><tr><th>Started</th><th>Ended</th><th>Elapsed</th><th>Status</th><th>Exact working</th><th>Idle</th><th>Outside office</th><th>Breaks</th><th>Shots</th><th></th></tr></thead>
                 <tbody>
                 @forelse($summary['sessions'] as $session)
                     <tr>
                         <td class="num">{{ \App\Support\Format::timeWithSeconds($session->started_at) }}</td>
                         <td class="num">{{ \App\Support\Format::timeWithSeconds($session->ended_at) }}</td>
                         <td class="num muted">{{ \App\Support\Format::elapsed($session->started_at, $session->ended_at) }}</td>
-                        <td><span class="badge {{ \App\Support\Format::statusClass($session->status) }}">{{ \App\Support\Format::statusLabel($session->status) }}</span></td>
+                        <td>
+                            <span class="badge {{ \App\Support\Format::statusClass($session->status) }}">{{ \App\Support\Format::statusLabel($session->status) }}</span>
+                            @if($session->away && $session->is_running)<span class="badge badge-warning">Away</span>@endif
+                        </td>
                         <td class="num strong">{{ \App\Support\Format::duration($session->active_seconds) }}</td>
                         <td class="num tone-orange">{{ \App\Support\Format::duration($session->idle_seconds) }}</td>
+                        <td class="num tone-blue">{{ \App\Support\Format::duration($session->away_seconds) }}</td>
                         <td class="num tone-purple">{{ \App\Support\Format::duration($session->break_seconds) }}</td>
                         <td class="num">{{ $session->screenshots_count }}</td>
                         <td class="text-right"><a class="button button-secondary button-sm" href="{{ route('sessions.show', $session) }}">Details</a></td>
                     </tr>
                 @empty
-                    <tr><td colspan="9"><div class="empty">No sessions recorded on this date.</div></td></tr>
+                    <tr><td colspan="10"><div class="empty">No sessions recorded on this date.</div></td></tr>
                 @endforelse
                 </tbody>
             </table>
@@ -102,11 +111,14 @@
         <div class="card-head">
             <div>
                 <h3 class="card-title">Monthly report · {{ $month->format('F Y') }}</h3>
-                <div class="card-subtitle">Total formula set by the admin: {{ $modes[$mode] }}</div>
+                <div class="card-subtitle">
+                    Total formula set by the admin: {{ $modes[$mode] }}
+                    · Outside-office time {{ $includeAway ? 'accepted in the total' : 'excluded from the total' }}
+                </div>
             </div>
         </div>
         <div class="card-pad">
-            <div class="grid grid-5">
+            <div class="grid grid-6">
                 <div class="card stat-card tone-green">
                     <div class="stat-label">Exact working</div>
                     <div class="stat-value">{{ \App\Support\Format::duration($monthly['active_seconds']) }}</div>
@@ -116,6 +128,11 @@
                     <div class="stat-label">Idle</div>
                     <div class="stat-value">{{ \App\Support\Format::duration($monthly['idle_seconds']) }}</div>
                     <div class="stat-note">Whole month</div>
+                </div>
+                <div class="card stat-card tone-blue">
+                    <div class="stat-label">Outside office</div>
+                    <div class="stat-value">{{ \App\Support\Format::duration($monthly['away_seconds']) }}</div>
+                    <div class="stat-note">{{ $includeAway ? 'Accepted in the total' : 'Not added to the total' }}</div>
                 </div>
                 <div class="card stat-card tone-purple">
                     <div class="stat-label">Namaz break</div>
@@ -130,19 +147,20 @@
                 <div class="card stat-card tone-blue">
                     <div class="stat-label">Total working time</div>
                     <div class="stat-value">{{ \App\Support\Format::duration($monthly['total_seconds']) }}</div>
-                    <div class="stat-note">{{ $modes[$mode] }}</div>
+                    <div class="stat-note">{{ $modes[$mode] }}{{ $includeAway ? ' + outside office' : '' }}</div>
                 </div>
             </div>
         </div>
         <div class="table-wrap">
             <table>
-                <thead><tr><th>Date</th><th>Exact working</th><th>Idle</th><th>Namaz</th><th>Toilet</th><th>Total</th></tr></thead>
+                <thead><tr><th>Date</th><th>Exact working</th><th>Idle</th><th>Outside office</th><th>Namaz</th><th>Toilet</th><th>Total</th></tr></thead>
                 <tbody>
                 @foreach($monthly['days'] as $day)
                     <tr>
                         <td class="num">{{ $day['date']->format('d M Y') }}</td>
                         <td class="num strong">{{ \App\Support\Format::duration($day['active_seconds']) }}</td>
                         <td class="num tone-orange">{{ \App\Support\Format::duration($day['idle_seconds']) }}</td>
+                        <td class="num tone-blue">{{ \App\Support\Format::duration($day['away_seconds']) }}</td>
                         <td class="num tone-purple">{{ \App\Support\Format::duration($day['namaz_seconds']) }}</td>
                         <td class="num tone-blue">{{ \App\Support\Format::duration($day['toilet_seconds']) }}</td>
                         <td class="num strong">{{ \App\Support\Format::duration($day['total_seconds']) }}</td>

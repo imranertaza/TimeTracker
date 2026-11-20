@@ -26,29 +26,30 @@ Built for an office in **Dhaka, Bangladesh (Asia/Dhaka, UTC+6)**.
   - **Idle time:** after this many minutes without input, time is recorded as idle. `0` disables idle time.
   - **Stop time:** after this many minutes without input, tracking stops automatically. `0` disables the automatic stop.
 - The stop timer always has priority. `idle 2, stop 4` records idle from 2 to 4 minutes and stops at 4; with a stop time equal to or shorter than the idle time, tracking stops without recording any idle time.
+- **Working away from PC** button: staff can keep tracking while working in the office with another device (or with no device). Away mode bypasses the idle stop timer and pauses screenshots; office hours still apply. The time is recorded as "outside office" time and is shown separately to staff and admin.
 - Takes a **random screenshot once in every 10-minute block** while tracking.
 - Screenshots pause during namaz breaks and are uploaded to the Laravel server.
 - **Asor namaz break: 20 minutes. Johor namaz break: 20 minutes. Maghrib namaz break: 15 minutes. Toilet break: 15 minutes.** These allowances are configurable by the admin globally and can also be overridden per staff member.
 - Break time pauses active/idle tracking and is stored separately.
 - **A break that runs past its allowance stops time tracking automatically** instead of resuming the session. This applies to every namaz break and the toilet break.
 - Works offline: activity is queued in local SQLite and retried automatically.
-- Shows live session timer, active time, idle time, break time, today's namaz and toilet totals, keystrokes, clicks, screenshots and sync status.
+- Shows live session timer, active time, idle time, outside-office (away) time, break time, today's namaz and toilet totals, keystrokes, clicks, screenshots and sync status.
 - **Picks up admin setting changes instantly** (within ~2 seconds): office windows, idle/stop timers, screenshot interval, and namaz/toilet allowances are re-read from the server while the app is running, and the screen is refreshed to match.
 - Auto-start can be toggled from the app footer.
 
 ### Laravel web panel (`web/`)
 
 - Admin and staff logins.
-- **Admin dashboard:** live online staff, exact working time, idle time, namaz and toilet totals, keyboard/mouse counts, screenshots and last heartbeat.
+- **Admin dashboard:** live online staff, exact working time, idle time, outside-office time (with an "Away" badge on live sessions), namaz and toilet totals, keyboard/mouse counts, screenshots and last heartbeat.
 - **Office time settings:** one global office schedule for every staff member, plus support for any number of office windows and an optional custom office schedule for any individual staff member. The global idle/stop timers and every namaz/toilet break allowance are configured here, with explicit global-or-custom choices per staff member under Staff accounts. Desktop apps receive the schedule on login and on every sync.
 - **Live setting updates:** any change made in the admin panel (global office hours, idle/stop timers, screenshot interval, namaz/toilet allowances or a staff member's custom schedule) reaches every running desktop app within about 2 seconds. The app re-renders its office rules, break buttons and window badge and enforces the new hours immediately.
-- **Daily reports:** filter by date and staff member; exact working, idle, Asor, Johor and Maghrib namaz, and every staff member's total toilet break time for the day; CSV export.
+- **Daily reports:** filter by date and staff member; exact working, idle, outside-office, Asor, Johor and Maghrib namaz, and every staff member's total toilet break time for the day; CSV export.
 - **Exact time reporting:** durations never lose their seconds and every session shows its start, end and elapsed wall clock time. A session from 08:20:40 to 08:25:00 therefore reads "Elapsed 4m 20s" and "Exact working 4m 18s" instead of a rounded "4m" that looked like a missing minute.
-- **Monthly reports:** exact working, idle, namaz and toilet totals for every staff member, daily breakdown, and CSV export.
-- **Monthly total-time formula:** the admin can generate the monthly total as exact working only, exact + idle, exact + namaz, or exact + idle + namaz. The chosen formula is also used on staff reports.
+- **Monthly reports:** exact working, idle, outside-office, namaz and toilet totals for every staff member, daily breakdown, and CSV export.
+- **Monthly total-time formula:** the admin can generate the monthly total as exact working only, exact + idle, exact + namaz, or exact + idle + namaz. The chosen formula is also used on staff reports. Outside-office time is an extra add-on: the admin chooses **Accept and add it to the total** when generating the monthly report, and the decision is saved as the default for the staff report.
 - **Staff management:** create, edit, deactivate, reset password; set a custom office time, custom idle/stop timers and custom Asor/Johor/Maghrib/toilet break allowances per staff member, each with an explicit "use global" or "custom" choice; deactivation revokes the desktop API token. Only the admin can change these settings.
-- **Staff dashboard:** personal exact working/idle/namaz/toilet totals, 7-day chart, session history, breaks and screenshots.
-- **Staff reports:** each staff member can view their own daily and monthly exact working, idle, namaz, toilet and total time.
+- **Staff dashboard:** personal exact working/idle/outside-office/namaz/toilet totals, 7-day chart, session history, breaks and screenshots.
+- **Staff reports:** each staff member can view their own daily and monthly exact working, idle, outside-office, namaz, toilet and total time, including whether the admin accepted away time in the monthly total.
 - **Session detail page:** minute-by-minute activity and all screenshots.
 - All screenshots are private and served only to the owner or an admin.
 - API tokens are stored as SHA-256 hashes, not plain text.
@@ -156,12 +157,14 @@ This listens on `0.0.0.0:8000`, so staff PCs can use `http://SERVER-IP:8000/api/
   - keystrokes, clicks
   - active seconds
   - idle seconds
+  - away seconds (outside-office time)
   - idle/active classification
-- Active and idle are mutually exclusive. A minute can contain both (for example, 30 active seconds then 30 idle seconds).
+- Active and idle are mutually exclusive. A minute can contain both (for example, 30 active seconds then 30 idle seconds). Away seconds are kept separate and are mutually exclusive with both.
 - Inactivity works from the last keyboard or mouse input. Two independent timers are configurable globally and per staff member:
   - **Idle time:** after this many minutes, seconds are recorded as idle. `0` disables idle time.
   - **Stop time:** after this many minutes, the session stops automatically. `0` disables the automatic stop.
 - The stop timer has priority. When both are enabled and the idle timer is shorter, time between the two is idle and the session stops at the stop timer. When the stop timer is equal to or shorter than the idle timer, the session stops without recording idle time.
+- **Away mode** bypasses the stop timer and screenshots. It uses the wall clock, so the time still counts if the PC sleeps, but only inside office windows. Staff should switch it off as soon as they return. Breaks are unavailable while away mode is on.
 - Break time is **not** counted as active or idle. Namaz and toilet breaks are stored by type, so daily and monthly reports show each total separately.
 - A break ends automatically when the staff member clicks **End break** inside the allowance. If the allowance runs out first, the work session is stopped automatically.
 - The Laravel server recalculates session totals from synced minute rows and break rows, so a modified client cannot simply inflate totals.
@@ -183,12 +186,23 @@ The selected formula is saved as the default and is used on staff monthly report
 The admin can change it while generating any monthly report. Toilet break time is
 reported separately and is not part of these total-time formulas.
 
+Outside-office time is not included automatically. The monthly report has an
+**Accept and add it to the total** checkbox; when ticked, the chosen formula becomes:
+
+```
+total = formula above + outside-office time
+```
+
+The decision is saved to office settings, so staff reports show the same accepted or
+excluded value. Daily reports always show away time separately, without changing the
+monthly formula.
+
 ---
 
 ## 5. Screenshot behaviour
 
 - A random moment is selected inside every 10-minute block while a session is running.
-- Screenshots are paused during namaz and toilet breaks and outside tracking.
+- Screenshots are paused during namaz and toilet breaks, while away mode is on, and outside tracking.
 - Images are compressed to JPEG and stored locally first:
   ```
   %LOCALAPPDATA%\OfficeTimeTracker\screenshots\YYYY-MM-DD\

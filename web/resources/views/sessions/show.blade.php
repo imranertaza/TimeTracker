@@ -20,7 +20,7 @@
         <a class="button button-secondary" href="{{ url()->previous() }}">Back</a>
     </div>
 
-    <div class="grid grid-6 mb-3">
+    <div class="grid grid-7 mb-3">
         <div class="card stat-card tone-green">
             <div class="stat-label">Active</div>
             <div class="stat-value">{{ \App\Support\Format::duration($session->active_seconds) }}</div>
@@ -28,6 +28,11 @@
         <div class="card stat-card tone-orange">
             <div class="stat-label">Idle</div>
             <div class="stat-value">{{ \App\Support\Format::duration($session->idle_seconds) }}</div>
+        </div>
+        <div class="card stat-card tone-blue">
+            <div class="stat-label">Outside office</div>
+            <div class="stat-value">{{ \App\Support\Format::duration($session->away_seconds) }}</div>
+            <div class="stat-note">Away from this PC</div>
         </div>
         <div class="card stat-card tone-purple">
             <div class="stat-label">Namaz break</div>
@@ -60,7 +65,7 @@
             </div>
             <div class="table-wrap">
                 <table>
-                    <thead><tr><th>Minute</th><th>Keystrokes</th><th>Clicks</th><th>Active</th><th>Idle</th><th>Classification</th></tr></thead>
+                    <thead><tr><th>Minute</th><th>Keystrokes</th><th>Clicks</th><th>Active</th><th>Idle</th><th>Outside office</th><th>Classification</th></tr></thead>
                     <tbody>
                     @forelse($activity as $minute)
                         <tr>
@@ -69,8 +74,11 @@
                             <td class="num">{{ number_format($minute->clicks) }}</td>
                             <td class="num tone-green">{{ $minute->active_seconds }}s</td>
                             <td class="num tone-orange">{{ $minute->idle_seconds }}s</td>
+                            <td class="num tone-blue">{{ $minute->away_seconds }}s</td>
                             <td>
-                                @if($minute->is_idle)
+                                @if($minute->away_seconds > 0)
+                                    <span class="badge badge-warning">Away</span>
+                                @elseif($minute->is_idle)
                                     <span class="badge badge-warning">Idle</span>
                                 @else
                                     <span class="badge badge-success">Active</span>
@@ -78,7 +86,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="6"><div class="empty">No activity minutes synced.</div></td></tr>
+                        <tr><td colspan="7"><div class="empty">No activity minutes synced.</div></td></tr>
                     @endforelse
                     </tbody>
                 </table>
@@ -101,6 +109,7 @@
                     <div class="detail-row"><span class="detail-label">Elapsed</span><span class="detail-value">{{ \App\Support\Format::elapsed($session->started_at, $session->ended_at) }}</span></div>
                     <div class="detail-row"><span class="detail-label">Exact working</span><span class="detail-value tone-green">{{ \App\Support\Format::duration($session->active_seconds) }}</span></div>
                     <div class="detail-row"><span class="detail-label">Idle</span><span class="detail-value tone-orange">{{ \App\Support\Format::duration($session->idle_seconds) }}</span></div>
+                    <div class="detail-row"><span class="detail-label">Outside office</span><span class="detail-value tone-blue">{{ \App\Support\Format::duration($session->away_seconds) }}</span></div>
                     <div class="detail-row"><span class="detail-label">Tracked</span><span class="detail-value">{{ \App\Support\Format::duration($session->tracked_seconds) }}</span></div>
                     <div class="detail-row"><span class="detail-label">Session UUID</span><span class="detail-value mono tiny">{{ $session->uuid }}</span></div>
                 </div>

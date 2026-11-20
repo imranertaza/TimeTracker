@@ -185,6 +185,7 @@ class TrackerApp:
         features = [
             f"{schedule_windows_label()} office windows",
             "Keyboard and mouse activity, counted privately",
+            "Away mode for work away from this PC",
             self._inactivity_rule_text(),
             f"Random screenshots every {config.SCREENSHOT_INTERVAL_SECONDS // 60} minutes",
             f"{break_summary()} break allowances",
@@ -444,6 +445,16 @@ class TrackerApp:
         self.start_button.pack(side="left", padx=(0, 8))
         self.stop_button = self._button(control_row, "■  Stop", self._stop, bg=RED_SOFT, fg=RED)
         self.stop_button.pack(side="left", padx=(0, 8))
+        self.away_button = self._button(
+            control_row,
+            "◉  Working away from PC",
+            self._toggle_away,
+            bg=PURPLE_SOFT,
+            fg=PURPLE,
+            font=(FONT, 9, "bold"),
+            padx=10,
+        )
+        self.away_button.pack(side="left", padx=(0, 8))
         self.end_break_button = self._button(control_row, "End break", self._end_break, bg=ORANGE_SOFT, fg=ORANGE)
         self.end_break_button.pack(side="left")
 
@@ -490,6 +501,7 @@ class TrackerApp:
         metric_specs = [
             ("active", "ACTIVE TIME", GREEN, GREEN_SOFT),
             ("idle", "IDLE TIME", ORANGE, ORANGE_SOFT),
+            ("away", "OUTSIDE OFFICE", PURPLE, PURPLE_SOFT),
             ("namaz", "BREAK TOTAL", PURPLE, PURPLE_SOFT),
             ("screens", "SCREENSHOTS", BLUE, BLUE_SOFT),
             ("keys", "KEYSTROKES", GREEN, GREEN_SOFT),
@@ -545,7 +557,7 @@ class TrackerApp:
         style.map("Activity.Treeview", background=[("selected", GREEN_SOFT)], foreground=[("selected", TEXT)])
         self.activity_tree = ttk.Treeview(
             tree_wrap,
-            columns=("time", "keys", "clicks", "active", "idle", "kind"),
+            columns=("time", "keys", "clicks", "active", "idle", "away", "kind"),
             show="headings",
             style="Activity.Treeview",
             height=6,
@@ -556,12 +568,14 @@ class TrackerApp:
             ("clicks", "CLICKS", 65),
             ("active", "ACTIVE", 70),
             ("idle", "IDLE", 70),
+            ("away", "AWAY", 70),
             ("kind", "TYPE", 70),
         ):
             self.activity_tree.heading(column, text=label)
             self.activity_tree.column(column, width=width, anchor="w", stretch=column == "time")
         self.activity_tree.pack(fill="both", expand=True)
         self.activity_tree.tag_configure("idle", foreground=ORANGE)
+        self.activity_tree.tag_configure("away", foreground=PURPLE)
         self.activity_tree.tag_configure("active", foreground=TEXT)
 
         side = tk.Frame(bottom, bg=BG)
@@ -616,6 +630,7 @@ class TrackerApp:
             for index, (start, end) in enumerate(config.WORK_WINDOWS)
         ]
         texts.append(f"Inactivity · {self._inactivity_rule_text()}")
+        texts.append("Away mode · bypasses the stop timer and screenshots; office hours still apply")
         texts.append(f"Screenshots · random once per {config.SCREENSHOT_INTERVAL_SECONDS // 60} minutes")
         texts.append(" · ".join(f"{rule['label']} · {rule['minutes']} minutes" for rule in config.BREAK_TYPES.values()))
         texts.append("Tracking stops automatically if a break runs past its allowance")
@@ -638,6 +653,7 @@ class TrackerApp:
         return {
             "active": "Productive time",
             "idle": idle_note,
+            "away": "Working without this PC",
             "namaz": "Namaz + toilet",
             "screens": f"Every {config.SCREENSHOT_INTERVAL_SECONDS // 60} minutes",
             "keys": "This session",
@@ -765,6 +781,30 @@ class TrackerApp:
         self.engine.end_break()
         self.sync.trigger()
 
+    def _toggle_away(self) -> None:
+        snap = self.engine.snapshot()
+        if snap["state"] != "running":
+            return
+        turning_on = not snap["away"]
+        if turning_on:
+            confirmed = messagebox.askyesno(
+                "Work away from this PC?",
+                "Time will keep counting without keyboard or mouse input, and screenshots "
+                "and idle auto-stop will be paused.\n\n"
+                "Use this when you are working in the office with another device or without "
+                "this computer. Office hours still apply. Turn it off as soon as you return.",
+                parent=self.root,
+            )
+            if not confirmed:
+                return
+        if self.engine.set_away(turning_on):
+            self.sync.trigger()
+            self._append_log(
+                "Away mode on. Away time is shown separately in daily and monthly reports."
+                if turning_on
+                else "Away mode off. Active and idle tracking resumed."
+            )
+
     def _sync_now(self) -> None:
         self.sync.trigger()
         self._append_log("Manual sync requested.")
@@ -857,7 +897,18 @@ class TrackerApp:
             self.schedule_text.configure(text=f"{schedule_windows_label()}  ·  Asia/Dhaka")
             self.schedule_right.configure(text=f"Next start {format_local(schedule.next_start, '%d %b, %I:%M %p')}", fg=MUTED)
 
-        if state == "running":
+        if state == "running" and snap["away"]:
+            status_text = "TRACKING · AWAY"
+            status_bg, status_fg = PURPLE_SOFT, PURPLE
+            session_text = "Working away from this PC"
+            hint = (
+                "Away mode is on — time keeps counting without input. "
+                "Screenshots and idle auto-stop are paused. "
+                f"Away time so far: {format_duration(snap['away_seconds'], True)}."
+            )
+            hint_fg = PURPLE
+            self.timer_label.configure(fg=PURPLE)
+        elif state == "running":
             status_text = "TRACKING"
             status_bg, status_fg = GREEN_SOFT, GREEN_DARK
             session_text = "Work session in progress"
@@ -916,6 +967,7 @@ class TrackerApp:
             text=(
                 f"Active {format_duration(snap['active_seconds'], True)}   ·   "
                 f"Idle {format_duration(snap['idle_seconds'], True)}   ·   "
+                f"Away {format_duration(snap['away_seconds'], True)}   ·   "
                 f"Break {format_duration(snap['break_seconds'], True)}"
             )
         )
@@ -923,12 +975,20 @@ class TrackerApp:
 
         self.start_button.configure(state="normal" if state == "idle" and schedule.is_open else "disabled")
         self.stop_button.configure(state="normal" if state in ("running", "on_break") else "disabled")
+        self.away_button.configure(
+            state="normal" if state == "running" else "disabled",
+            text=("←  Return to PC" if snap["away"] else "◉  Working away from PC"),
+            bg=PURPLE if snap["away"] else PURPLE_SOFT,
+            fg="#ffffff" if snap["away"] else PURPLE,
+            activebackground=PURPLE if snap["away"] else PURPLE_SOFT,
+        )
         for button in getattr(self, "break_buttons", {}).values():
-            button.configure(state="normal" if state == "running" else "disabled")
+            button.configure(state="normal" if state == "running" and not snap["away"] else "disabled")
         self.end_break_button.configure(state="normal" if state == "on_break" else "disabled")
 
         self.metric_vars["active"].set(format_duration(snap["active_seconds"], True))
         self.metric_vars["idle"].set(format_duration(snap["idle_seconds"], True))
+        self.metric_vars["away"].set(format_duration(snap["away_seconds"], True))
         self.metric_vars["namaz"].set(format_duration(snap["break_seconds"], True))
         self.metric_vars["screens"].set(str(snap["screenshot_count"]))
         session_uuid = self.engine.session_uuid
@@ -940,7 +1000,9 @@ class TrackerApp:
         self.metric_vars["keys"].set(f"{keys:,}")
         self.metric_vars["clicks"].set(f"{clicks:,}")
 
-        if state == "running" and snap["next_screenshot_at"]:
+        if state == "running" and snap["away"]:
+            self.shot_hint.configure(text="Screenshots paused in away mode")
+        elif state == "running" and snap["next_screenshot_at"]:
             remaining = max(0, int((snap["next_screenshot_at"] - datetime.now(snap["next_screenshot_at"].tzinfo)).total_seconds()))
             self.shot_hint.configure(text=f"Next screenshot in {format_duration(remaining)}")
         elif state == "on_break":
@@ -954,6 +1016,7 @@ class TrackerApp:
             text=(
                 f"Today: {format_duration(today['active_seconds'])} active · "
                 f"{format_duration(today['idle_seconds'])} idle · "
+                f"{format_duration(today['away_seconds'])} away · "
                 f"{format_duration(today_breaks['namaz'])} namaz · "
                 f"{format_duration(today_breaks['toilet'])} toilet"
             )
@@ -1019,7 +1082,13 @@ class TrackerApp:
         for row in rows:
             moment = parse_iso(row["minute_start"])
             minute = format_local(moment, "%I:%M %p") if moment else row["minute_start"]
-            kind = "Idle" if row["is_idle"] else "Active"
+            away_seconds = int(row["away_seconds"])
+            if away_seconds:
+                kind = "Away"
+            elif row["is_idle"]:
+                kind = "Idle"
+            else:
+                kind = "Active"
             self.activity_tree.insert(
                 "",
                 "end",
@@ -1029,9 +1098,10 @@ class TrackerApp:
                     f"{int(row['clicks']):,}",
                     f"{int(row['active_seconds'])}s",
                     f"{int(row['idle_seconds'])}s",
+                    f"{away_seconds}s",
                     kind,
                 ),
-                tags=("idle" if row["is_idle"] else "active",),
+                tags=("away" if away_seconds else ("idle" if row["is_idle"] else "active"),),
             )
 
     def _append_log(self, message: str) -> None:

@@ -41,6 +41,7 @@ class OfficeSettingController extends Controller
             'maghrib_namaz_minutes' => ['required', 'integer', 'min:1', 'max:180'],
             'toilet_minutes' => ['required', 'integer', 'min:1', 'max:180'],
             'total_time_mode' => ['required', Rule::in(array_keys(ReportService::totalModes()))],
+            'total_time_include_away' => ['nullable', 'boolean'],
         ]);
 
         $windows = WorkSchedule::parseWindowsInput($request->input('windows'), true);
@@ -55,6 +56,7 @@ class OfficeSettingController extends Controller
             'maghrib_namaz_minutes' => $data['maghrib_namaz_minutes'],
             'toilet_minutes' => $data['toilet_minutes'],
             'total_time_mode' => $data['total_time_mode'],
+            'total_time_include_away' => $request->boolean('total_time_include_away'),
         ])->save();
 
         return redirect()->route('admin.settings.edit')->with('success', 'Office time settings updated. Staff on the global settings will receive the new rules automatically.');

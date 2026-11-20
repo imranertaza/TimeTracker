@@ -44,7 +44,7 @@ class ReportController extends Controller
             $out = fopen('php://output', 'w');
             fwrite($out, "\xEF\xBB\xBF");
             fputcsv($out, [
-                'Staff', 'Email', 'Date', 'Exact working', 'Idle', 'Tracked', 'Asor Namaz', 'Johor Namaz',
+                'Staff', 'Email', 'Date', 'Exact working', 'Idle', 'Outside office', 'Tracked', 'Asor Namaz', 'Johor Namaz',
                 'Maghrib Namaz', 'Total Namaz', 'Toilet Break', 'Keystrokes', 'Clicks', 'Screenshots', 'Status',
             ]);
 
@@ -55,6 +55,7 @@ class ReportController extends Controller
                     $row['date']->format('Y-m-d'),
                     $this->hms($row['active_seconds']),
                     $this->hms($row['idle_seconds']),
+                    $this->hms($row['away_seconds']),
                     $this->hms($row['tracked_seconds']),
                     $this->hms($row['namaz']['asor']),
                     $this->hms($row['namaz']['johor']),
@@ -79,6 +80,9 @@ class ReportController extends Controller
             ? collect([$data['summary']])
             : $data['team'];
         $formula = $data['modes'][$data['mode']];
+        if ($data['includeAway']) {
+            $formula .= ' + outside office time';
+        }
 
         $filename = 'monthly-time-report-'.$data['month']->format('Y-m').'.csv';
 
@@ -86,7 +90,7 @@ class ReportController extends Controller
             $out = fopen('php://output', 'w');
             fwrite($out, "\xEF\xBB\xBF");
             fputcsv($out, [
-                'Staff', 'Email', 'Month', 'Exact working', 'Idle', 'Asor Namaz', 'Johor Namaz',
+                'Staff', 'Email', 'Month', 'Exact working', 'Idle', 'Outside office', 'Asor Namaz', 'Johor Namaz',
                 'Maghrib Namaz', 'Total Namaz', 'Toilet Break', 'Total ('.$formula.')', 'Keystrokes', 'Clicks', 'Screenshots',
             ]);
 
@@ -97,6 +101,7 @@ class ReportController extends Controller
                     $row['month']->format('Y-m'),
                     $this->hms($row['active_seconds']),
                     $this->hms($row['idle_seconds']),
+                    $this->hms($row['away_seconds']),
                     $this->hms($row['namaz']['asor']),
                     $this->hms($row['namaz']['johor']),
                     $this->hms($row['namaz']['maghrib']),
@@ -153,17 +158,28 @@ class ReportController extends Controller
             $setting->save();
         }
 
+        $requestedIncludeAway = $request->query('include_away');
+        $includeAway = $requestedIncludeAway !== null
+            ? $request->boolean('include_away')
+            : (bool) $setting->total_time_include_away;
+
+        if ($requestedIncludeAway !== null && (bool) $setting->total_time_include_away !== $includeAway) {
+            $setting->total_time_include_away = $includeAway;
+            $setting->save();
+        }
+
         $userId = $request->integer('user_id');
         $staff = User::query()->where('role', 'staff')->orderBy('name')->get();
         $selectedUser = $userId ? $staff->firstWhere('id', $userId) : null;
         $team = $selectedUser
-            ? collect([$this->reports->monthly($selectedUser, $month, $mode)])
-            : $this->reports->teamMonthly($month, $mode);
+            ? collect([$this->reports->monthly($selectedUser, $month, $mode, $includeAway)])
+            : $this->reports->teamMonthly($month, $mode, $includeAway);
 
         return [
             'month' => $month,
             'mode' => $mode,
             'modes' => $this->reports->totalModes(),
+            'includeAway' => $includeAway,
             'staff' => $staff,
             'selectedUser' => $selectedUser,
             'team' => $team,

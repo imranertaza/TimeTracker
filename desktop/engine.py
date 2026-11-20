@@ -35,6 +35,11 @@ log = logging.getLogger(__name__)
 # working time. Anything up to this many seconds is still counted.
 MAX_CATCH_UP_SECONDS = 60.0
 
+# Away mode is meant to keep counting time without this PC (for example while
+# working from another device). The normal 60s watchdog cap would drop that
+# time when the PC sleeps, so away gaps are capped at one office day instead.
+MAX_AWAY_CATCH_UP_SECONDS = 12 * 60 * 60.0
+
 try:  # pynput is an optional runtime dependency; the rest still works without it.
     from pynput import keyboard, mouse
 
@@ -96,7 +101,11 @@ class TrackingEngine:
 
         self.active_seconds = 0
         self.idle_seconds = 0
+        self.away_seconds = 0
         self.break_seconds = 0
+        # While away, wall-clock time is billed as "outside office" time and
+        # idle auto-stop and screenshots are paused. Office hours still apply.
+        self.away = False
 
         self._current_minute: str | None = None
         self._minutes: dict[str, dict[str, int]] = {}
@@ -206,7 +215,9 @@ class TrackingEngine:
             self.state = "running"
             self.active_seconds = 0
             self.idle_seconds = 0
+            self.away_seconds = 0
             self.break_seconds = 0
+            self.away = False
             self._minutes.clear()
             self._current_minute = minute_iso(now)
             self._minutes[self._current_minute] = self._blank_minute()
@@ -246,16 +257,20 @@ class TrackingEngine:
                 ended_at=iso_utc(now),
                 active_seconds=self.active_seconds,
                 idle_seconds=self.idle_seconds,
+                away_seconds=self.away_seconds,
                 break_seconds=self.break_seconds,
+                away=0,
                 stop_synced=0,
             )
             self.emit(
                 f"Tracking stopped ({reason}). Active {format_duration(self.active_seconds)}, "
-                f"idle {format_duration(self.idle_seconds)}."
+                f"idle {format_duration(self.idle_seconds)}, "
+                f"away {format_duration(self.away_seconds)}."
             )
             self.session_uuid = None
             self.started_at = None
             self.next_screenshot_at = None
+            self.away = False
             self._minutes.clear()
             self._current_minute = None
 
@@ -265,6 +280,7 @@ class TrackingEngine:
             row["uuid"],
             status="stopped",
             ended_at=now,
+            away=0,
             stop_synced=0,
         )
 
@@ -272,10 +288,6 @@ class TrackingEngine:
         """Resume today's open session after a crash/restart when still in office hours."""
         row = self.db.get_open_session()
         if not row:
-            return False
-        if not is_within_work_window():
-            self._stop_open_row(row)
-            self.emit("A previous open session was closed because office hours ended.")
             return False
 
         from config import parse_iso
@@ -286,10 +298,16 @@ class TrackingEngine:
             self.emit("A previous day's open session was closed.")
             return False
 
+        now = utc_now()
+        last_saved = parse_iso(row["updated_at"]) or started
+        if last_saved < started:
+            last_saved = started
+        if last_saved > now:
+            last_saved = now
+
         # A break may have been left open if the app crashed or was restarted
         # while the staff member was away. Rebuild that state instead of
         # silently resuming the session and counting break time as active.
-        now = utc_now()
         active_break: tuple | None = None
         saw_open_break = False
         for open_break in self.db.open_breaks(row["uuid"]):
@@ -321,6 +339,7 @@ class TrackingEngine:
                 row["uuid"],
                 status="stopped",
                 ended_at=iso_utc(now),
+                away=0,
                 break_seconds=total_break,
                 stop_synced=0,
             )
@@ -330,20 +349,39 @@ class TrackingEngine:
             )
             return False
 
+        recovering_away = bool(row["away"]) and active_break is None
         with self._lock:
             self.session_uuid = row["uuid"]
             self.started_at = started
             self.active_seconds = int(row["active_seconds"] or 0)
             self.idle_seconds = int(row["idle_seconds"] or 0)
+            self.away_seconds = int(row["away_seconds"] or 0)
             self.break_seconds = int(row["break_seconds"] or 0)
+            self.away = recovering_away
             self.screenshot_count = self.db.screenshot_count(row["uuid"])
             self._last_tick = time.monotonic()
-            self._last_tick_wall = now
+            self._last_tick_wall = last_saved
             self._last_persist = 0.0
             self._partial_second = 0.0
             self._last_input = now
             self._current_minute = minute_iso(now)
             self._minutes[self._current_minute] = self._blank_minute()
+
+            if recovering_away:
+                # The app may have been closed or the PC asleep while the staff
+                # member was away. Bill only the office seconds in that gap.
+                self._account_time(now, away_override=True)
+                self._flush_finished_minutes()
+                self._persist_current_locked(now, force=True)
+                self.emit(
+                    f"Recovered away time while the tracker was closed "
+                    f"({format_duration(self.away_seconds)} total)."
+                )
+
+            if not is_within_work_window(now):
+                self._stop_open_row(row)
+                self.emit("A previous open session was closed because office hours ended.")
+                return False
 
             if active_break is not None:
                 break_row, break_started, break_ends_at, planned = active_break
@@ -353,15 +391,26 @@ class TrackingEngine:
                 self.break_ends_at = break_ends_at
                 self.break_planned_seconds = planned
                 self.state = "on_break"
-                self.db.update_session(row["uuid"], status="paused")
+                self.away = False
+                self.db.update_session(
+                    row["uuid"],
+                    status="paused",
+                    away=0,
+                    away_seconds=self.away_seconds,
+                )
                 self.emit(
                     "Recovered an open break. Tracking is still paused; it stops "
                     "automatically when the allowance ends."
                 )
             else:
                 self.state = "running"
-                self._schedule_next_screenshot(now, skip_current=False)
-                self.emit("Recovered and resumed today's open tracking session.")
+                if not self.away:
+                    self._schedule_next_screenshot(now, skip_current=False)
+                self.emit(
+                    "Recovered and resumed today's open tracking session in away mode."
+                    if self.away
+                    else "Recovered and resumed today's open tracking session."
+                )
 
             return True
 
@@ -370,6 +419,9 @@ class TrackingEngine:
         with self._lock:
             if self.state != "running" or not self.session_uuid:
                 self.emit("Start a work session before taking a break.")
+                return False
+            if self.away:
+                self.emit("Switch off away mode before starting a break.")
                 return False
             break_config = config.BREAK_TYPES.get(break_type)
             if not break_config:
@@ -458,13 +510,21 @@ class TrackingEngine:
                 return
 
             if not is_within_work_window(now):
-                self.stop_session("Office hours ended")
+                if self.away:
+                    # Count away time up to the last allowed office second even
+                    # when the PC slept past the window boundary.
+                    self._account_time(now, away_override=True)
+                    self._flush_finished_minutes()
+                    self._persist_current_locked(now, force=True)
+                self.stop_session("Office hours ended", account=False)
                 return
 
-            # The stop timer always wins, so it is checked before idle time is
-            # accounted. A stop timer of 0 means automatic stop is disabled.
+            # Away mode deliberately bypasses the inactivity stop timer. The
+            # staff member may be working from another device with no input
+            # here; office hours remain enforced above.
             if (
-                config.STOP_AFTER_SECONDS > 0
+                not self.away
+                and config.STOP_AFTER_SECONDS > 0
                 and self._idle_age(now) >= config.STOP_AFTER_SECONDS
             ):
                 self._stop_for_inactivity(now)
@@ -477,7 +537,7 @@ class TrackingEngine:
                 self._persist_current_locked(now, force=False)
                 self._last_persist = time.monotonic()
 
-            if self.next_screenshot_at and now >= self.next_screenshot_at:
+            if not self.away and self.next_screenshot_at and now >= self.next_screenshot_at:
                 self._capture_screenshot(now)
 
     @staticmethod
@@ -512,11 +572,16 @@ class TrackingEngine:
         if self._last_tick_wall and cutoff < self._last_tick_wall:
             cutoff = self._last_tick_wall
 
-        self._account_time(cutoff, idle_override=self._idle_time_enabled())
+        self._account_time(cutoff, idle_override=self._idle_time_enabled(), away_override=False)
         self._flush_finished_minutes()
         self.stop_session("Inactivity timeout", account=False)
 
-    def _account_time(self, now: datetime, idle_override: bool | None = None) -> None:
+    def _account_time(
+        self,
+        now: datetime,
+        idle_override: bool | None = None,
+        away_override: bool | None = None,
+    ) -> None:
         """Add the time since the previous tick to the tracked minutes.
 
         The seconds are split over the minute buckets they really belong to, so
@@ -524,8 +589,15 @@ class TrackingEngine:
         counted twice. The tracked total therefore matches the wall clock.
 
         Idle time is only recorded when the idle timer is enabled and it is
-        not overruled by the stop timer.
+        not overruled by the stop timer. Away time uses wall-clock time instead
+        of the watchdog cap because the PC may be asleep while staff work
+        elsewhere.
         """
+        away = self.away if away_override is None else away_override
+        if away:
+            self._account_away_time(now)
+            return
+
         elapsed = time.monotonic() - self._last_tick
 
         if elapsed <= 0:
@@ -564,10 +636,43 @@ class TrackingEngine:
             remaining -= take
             cursor = cursor + timedelta(seconds=take)
 
-    def _add_to_bucket(self, bucket: str, seconds: int, idle: bool) -> None:
+    def _account_away_time(self, now: datetime) -> None:
+        """Bill the wall-clock gap as away time, counting only office seconds."""
+        wall_start = self._last_tick_wall or now
+        if self.started_at and wall_start < self.started_at:
+            wall_start = self.started_at
+
+        self._last_tick = time.monotonic()
+        self._last_tick_wall = now
+        if now <= wall_start:
+            return
+
+        end = min(now, wall_start + timedelta(seconds=MAX_AWAY_CATCH_UP_SECONDS))
+        self._partial_second += (end - wall_start).total_seconds()
+        whole = int(self._partial_second)
+        if whole <= 0:
+            return
+        self._partial_second -= whole
+
+        moment = wall_start
+        for _ in range(whole):
+            if self._is_work_second(moment):
+                self._add_to_bucket(minute_iso(moment), 1, idle=False, away=True)
+            moment += timedelta(seconds=1)
+
+    @staticmethod
+    def _is_work_second(moment: datetime) -> bool:
+        """Cheap office-window check used for away-minute reconstruction."""
+        local_time = to_local(moment).time().replace(microsecond=0)
+        return any(start <= local_time < end for start, end in config.WORK_WINDOWS)
+
+    def _add_to_bucket(self, bucket: str, seconds: int, idle: bool, away: bool = False) -> None:
         data = self._minutes.setdefault(bucket, self._blank_minute())
 
-        if idle:
+        if away:
+            data["away_seconds"] += seconds
+            self.away_seconds += seconds
+        elif idle:
             data["idle_seconds"] += seconds
             self.idle_seconds += seconds
         else:
@@ -583,7 +688,14 @@ class TrackingEngine:
             self._flush_minute(bucket)
 
     def _blank_minute(self) -> dict[str, int]:
-        return {"keystrokes": 0, "clicks": 0, "active_seconds": 0, "idle_seconds": 0, "is_idle": 0}
+        return {
+            "keystrokes": 0,
+            "clicks": 0,
+            "active_seconds": 0,
+            "idle_seconds": 0,
+            "away_seconds": 0,
+            "is_idle": 0,
+        }
 
     def _idle_age(self, now: datetime) -> float:
         hook_age = max(0.0, (now - self._last_input).total_seconds())
@@ -592,13 +704,56 @@ class TrackingEngine:
             return hook_age
         return max(hook_age, windows_age)
 
+    def set_away(self, away: bool) -> bool:
+        """Turn away mode on/off for the active session.
+
+        The time before the toggle is accounted normally (or as away when
+        returning), so the two categories never overlap or lose seconds.
+        """
+        with self._lock:
+            if self.state != "running" or not self.session_uuid:
+                return False
+            away = bool(away)
+            if self.away == away:
+                return True
+
+            now = utc_now()
+            if away:
+                self._account_time(now, away_override=False)
+                self.away = True
+                self.next_screenshot_at = None
+                self.emit(
+                    "Away mode on. Time keeps counting without input; screenshots "
+                    "and idle auto-stop are paused. Office hours still apply."
+                )
+            else:
+                self._account_time(now, away_override=True)
+                self.away = False
+                # Restart the idle timer so the long away gap cannot trigger an
+                # immediate auto-stop on the next tick.
+                self._last_input = now
+                self._schedule_next_screenshot(now, skip_current=True)
+                self.emit("Away mode off. Active and idle tracking resumed.")
+
+            self._flush_finished_minutes()
+            self._persist_current_locked(now, force=True)
+            self.db.update_session(
+                self.session_uuid,
+                away=1 if self.away else 0,
+                away_seconds=self.away_seconds,
+            )
+            return True
+
     def _persist_current_locked(self, now: datetime, force: bool = False) -> None:
         if not self.session_uuid or not self._current_minute:
             return
         data = self._minutes.get(self._current_minute)
         if not data:
             return
-        if not force and data["active_seconds"] + data["idle_seconds"] == 0 and data["keystrokes"] + data["clicks"] == 0:
+        if not force and (
+            data["active_seconds"] + data["idle_seconds"] + data["away_seconds"] == 0
+            and data["keystrokes"] + data["clicks"] == 0
+        ):
             return
         self.db.upsert_activity(
             self.session_uuid,
@@ -608,11 +763,13 @@ class TrackingEngine:
             data["active_seconds"],
             data["idle_seconds"],
             bool(data["is_idle"]),
+            away_seconds=data["away_seconds"],
         )
         self.db.update_session(
             self.session_uuid,
             active_seconds=self.active_seconds,
             idle_seconds=self.idle_seconds,
+            away_seconds=self.away_seconds,
             break_seconds=self.break_seconds,
         )
 
@@ -630,6 +787,7 @@ class TrackingEngine:
             data["active_seconds"],
             data["idle_seconds"],
             bool(data["is_idle"]),
+            away_seconds=data["away_seconds"],
         )
 
     # ------------------------------------------------------------------ screenshots
@@ -690,7 +848,11 @@ class TrackingEngine:
     def snapshot(self) -> dict:
         with self._lock:
             now = utc_now()
-            elapsed = self.active_seconds + self.idle_seconds if self.state in ("running", "on_break") else 0
+            elapsed = (
+                self.active_seconds + self.idle_seconds + self.away_seconds
+                if self.state in ("running", "on_break")
+                else 0
+            )
             idle_age = self._idle_age(now) if self.state == "running" else 0
             return {
                 "state": self.state,
@@ -699,10 +861,13 @@ class TrackingEngine:
                 "elapsed": elapsed,
                 "active_seconds": self.active_seconds,
                 "idle_seconds": self.idle_seconds,
+                "away_seconds": self.away_seconds,
                 "break_seconds": self.break_seconds,
+                "away": self.away,
                 "idle_age": idle_age,
                 "is_idle": (
-                    self._idle_time_enabled()
+                    not self.away
+                    and self._idle_time_enabled()
                     and idle_age > config.IDLE_THRESHOLD_SECONDS
                 ),
                 "screenshot_count": self.screenshot_count,

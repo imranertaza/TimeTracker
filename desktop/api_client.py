@@ -108,12 +108,14 @@ class ApiClient:
         status: str,
         activity: list[dict],
         breaks: list[dict],
+        away: bool = False,
     ) -> dict:
         return self._request(
             "POST",
             f"sessions/{session_uuid}/sync",
             {
                 "status": status,
+                "away": away,
                 "activity": activity,
                 "breaks": breaks,
             },

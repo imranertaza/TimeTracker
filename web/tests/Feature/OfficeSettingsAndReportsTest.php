@@ -645,4 +645,63 @@ class OfficeSettingsAndReportsTest extends TestCase
 
         $this->actingAs($staff)->get('/admin/reports/monthly')->assertForbidden();
     }
+
+    public function test_admin_can_accept_away_time_in_monthly_totals_and_staff_sees_the_decision(): void
+    {
+        $this->seed();
+        $admin = User::query()->where('email', 'admin@officetracker.test')->firstOrFail();
+        $staff = User::query()->where('email', 'staff@officetracker.test')->firstOrFail();
+
+        $startedAt = \Carbon\CarbonImmutable::parse('2026-11-09 10:00:00', 'Asia/Dhaka')->utc();
+        $session = WorkSession::query()->create([
+            'uuid' => (string) Str::uuid(),
+            'user_id' => $staff->id,
+            'started_at' => $startedAt,
+            'ended_at' => $startedAt->addHours(2),
+            'status' => 'stopped',
+            'active_seconds' => 1800,
+            'idle_seconds' => 0,
+            'away_seconds' => 2400,
+            'break_seconds' => 0,
+        ]);
+
+        ActivityMinute::query()->create([
+            'work_session_id' => $session->id,
+            'user_id' => $staff->id,
+            'minute_start' => $startedAt,
+            'keystrokes' => 0,
+            'clicks' => 0,
+            'active_seconds' => 1800,
+            'idle_seconds' => 0,
+            'away_seconds' => 2400,
+            'is_idle' => false,
+        ]);
+
+        $reports = app(ReportService::class);
+        $excluded = $reports->monthly($staff, '2026-11', 'active', false);
+        $included = $reports->monthly($staff, '2026-11', 'active', true);
+        $this->assertSame(1800, $excluded['total_seconds']);
+        $this->assertSame(4200, $included['total_seconds']);
+
+        $this->actingAs($admin)
+            ->get('/admin/reports/monthly?month=2026-11&mode=active&include_away=1')
+            ->assertOk()
+            ->assertSee('Outside office')
+            ->assertSee('1h 10m');
+
+        $this->assertTrue((bool) OfficeSetting::current()->total_time_include_away);
+
+        $this->actingAs($staff)
+            ->get('/my-reports?month=2026-11&date=2026-11-09')
+            ->assertOk()
+            ->assertSee('Outside office')
+            ->assertSee('Accepted in the total')
+            ->assertSee('1h 10m');
+
+        $this->actingAs($admin)
+            ->get('/admin/reports/monthly?month=2026-11&mode=active&include_away=0')
+            ->assertOk();
+
+        $this->assertFalse((bool) OfficeSetting::current()->total_time_include_away);
+    }
 }

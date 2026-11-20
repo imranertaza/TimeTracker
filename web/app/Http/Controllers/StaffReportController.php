@@ -27,15 +27,18 @@ class StaffReportController extends Controller
             ? WorkSchedule::local($request->query('date'))->startOfDay()
             : WorkSchedule::now()->startOfDay();
         $month = $this->reports->localMonth($request->query('month'));
-        $mode = $this->reports->normaliseMode(OfficeSetting::current()->total_time_mode);
+        $setting = OfficeSetting::current();
+        $mode = $this->reports->normaliseMode($setting->total_time_mode);
+        $includeAway = (bool) $setting->total_time_include_away;
 
         return view('reports.mine', [
             'date' => $date,
             'summary' => $this->reports->daily($user, $date),
             'month' => $month,
-            'monthly' => $this->reports->monthly($user, $month, $mode),
+            'monthly' => $this->reports->monthly($user, $month, $mode, $includeAway),
             'mode' => $mode,
             'modes' => $this->reports->totalModes(),
+            'includeAway' => $includeAway,
             'schedule' => WorkSchedule::status(null, $user),
             'windows' => WorkSchedule::windows($user),
             'breaks' => WorkSchedule::breakRules($user),

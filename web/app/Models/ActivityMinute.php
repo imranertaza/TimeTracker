@@ -18,6 +18,7 @@ class ActivityMinute extends Model
         'clicks',
         'active_seconds',
         'idle_seconds',
+        'away_seconds',
         'is_idle',
     ];
 
